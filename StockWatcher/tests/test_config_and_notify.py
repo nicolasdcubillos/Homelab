@@ -94,6 +94,41 @@ class TestConfigLoading:
         assert config.state.backend == "azure_table"
         assert config.runtime.rate == 2.5
 
+    def test_browser_stores_stay_disabled_without_the_flag(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("STOCKWATCHER_ENABLE_BROWSER_STORES", raising=False)
+        path = write_config(
+            tmp_path,
+            {
+                "watches": [{"name": "a", "match": ["a"]}],
+                "stores": [{"host": "www.nike.com", "provider": "nike", "enabled": False}],
+            },
+        )
+        assert load_config(path).enabled_stores() == []
+
+    def test_the_image_can_opt_browser_stores_back_in(self, tmp_path, monkeypatch):
+        """The container has chromium; a bare pip install does not."""
+        monkeypatch.setenv("STOCKWATCHER_ENABLE_BROWSER_STORES", "1")
+        path = write_config(
+            tmp_path,
+            {
+                "watches": [{"name": "a", "match": ["a"]}],
+                "stores": [
+                    {"host": "www.nike.com", "provider": "nike", "enabled": False},
+                    {"host": "dead.com", "provider": "shopify", "enabled": False},
+                ],
+            },
+        )
+        enabled = {s.host for s in load_config(path).enabled_stores()}
+        # Only browser providers are re-enabled — a store disabled for being
+        # dead must stay dead.
+        assert enabled == {"www.nike.com"}
+
+    def test_a_bad_rate_is_reported_clearly(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("STOCKWATCHER_RATE", "fast")
+        path = write_config(tmp_path, {"watches": [{"name": "a", "match": ["a"]}]})
+        with pytest.raises(ConfigError, match="STOCKWATCHER_RATE"):
+            load_config(path)
+
 
 class TestShippedConfig:
     """The repo ships a working config; a typo there breaks every run."""

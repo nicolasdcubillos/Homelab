@@ -258,15 +258,17 @@ The script builds the image, pushes to ACR, and runs
 
 Change the schedule with `-p cronExpression='0 */2 * * *'`.
 
-The image includes Playwright's Chromium and its system dependencies, so the
-Nike provider works in the job.
+The image includes Playwright's Chromium and its system dependencies, and sets
+`STOCKWATCHER_ENABLE_BROWSER_STORES=1`, so the Nike provider is active in the
+job. Locally those stores stay disabled until you run
+`playwright install chromium` and set that variable yourself.
 
 ---
 
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q      # 199 tests, no network
+.venv/bin/python -m pytest -q      # 202 tests, no network
 .venv/bin/ruff check src tests
 .venv/bin/ruff format src tests
 ```

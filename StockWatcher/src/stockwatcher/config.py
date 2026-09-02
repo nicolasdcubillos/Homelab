@@ -7,7 +7,7 @@ same engine watches sneakers today and GPUs or concert tickets tomorrow.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -20,6 +20,10 @@ from .sizes import Gender
 
 class ConfigError(ValueError):
     """Raised when the YAML config is malformed."""
+
+
+#: Providers that need a real browser, and so a chromium install.
+BROWSER_PROVIDERS = frozenset({"playwright", "nike"})
 
 
 @dataclass
@@ -311,4 +315,19 @@ def apply_env_overrides(config: Config) -> Config:
             config.runtime.rate = float(rate)
         except ValueError:
             raise ConfigError(f"STOCKWATCHER_RATE must be a number, got {rate!r}") from None
+
+    # Browser-backed stores ship disabled, because they need a chromium that a
+    # plain `pip install` does not provide.  The container image does install
+    # it, so it opts back in here rather than shipping a second YAML.
+    if _env_flag("STOCKWATCHER_ENABLE_BROWSER_STORES"):
+        config.stores = [
+            replace(store, enabled=True)
+            if store.provider in BROWSER_PROVIDERS and not store.enabled
+            else store
+            for store in config.stores
+        ]
     return config
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
