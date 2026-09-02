@@ -276,7 +276,7 @@ def load_config(
         seen.add(store.host)
         deduped.append(store)
 
-    return Config(
+    config = Config(
         watches=watches,
         stores=deduped,
         discovery=_dataclass_from_dict(
@@ -286,3 +286,29 @@ def load_config(
         runtime=_dataclass_from_dict(RuntimeConfig, data.get("runtime")),
         state=_dataclass_from_dict(StateConfig, data.get("state")),
     )
+    return apply_env_overrides(config)
+
+
+def apply_env_overrides(config: Config) -> Config:
+    """Let environment variables win over the YAML.
+
+    Container Apps injects configuration as env vars, and the image ships the
+    same YAML for every environment, so the deployed job needs a way to switch
+    the state backend without a rebuild.
+    """
+    backend = os.getenv("STOCKWATCHER_STATE_BACKEND")
+    if backend:
+        config.state.backend = backend
+    path = os.getenv("STOCKWATCHER_STATE_PATH")
+    if path:
+        config.state.path = path
+    table = os.getenv("AZURE_TABLE_NAME")
+    if table:
+        config.state.table_name = table
+    rate = os.getenv("STOCKWATCHER_RATE")
+    if rate:
+        try:
+            config.runtime.rate = float(rate)
+        except ValueError:
+            raise ConfigError(f"STOCKWATCHER_RATE must be a number, got {rate!r}") from None
+    return config
