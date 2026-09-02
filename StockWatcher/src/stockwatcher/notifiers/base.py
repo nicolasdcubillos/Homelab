@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Sequence
 from decimal import Decimal
 
 from ..models import Alert, Hit
+from ..sizes import parse_size
 
 
 class NotifierError(RuntimeError):
@@ -71,7 +72,20 @@ def group_hits(hits: Iterable[Hit]) -> list[list[Hit]]:
             "" if hit.price is None else str(hit.price),
         )
         groups.setdefault(key, []).append(hit)
-    return [sorted(group, key=lambda h: h.variant_label) for group in groups.values()]
+    return [sorted(group, key=_variant_sort_key) for group in groups.values()]
+
+
+def _variant_sort_key(hit: Hit) -> tuple[int, float, str]:
+    """Order sizes numerically, so a message reads "9.5, 10" not "10, 9.5".
+
+    Sorting the raw labels as strings puts "10" before "9.5".  Non-numeric
+    variants (colours, capacities) fall back to alphabetical, after the
+    numeric ones.
+    """
+    size = parse_size(hit.variant_label)
+    if size is not None:
+        return (0, size.value, hit.variant_label)
+    return (1, 0.0, hit.variant_label.lower())
 
 
 def batch_groups(groups: Sequence[Sequence[Hit]], max_hits_per_message: int) -> list[list[Hit]]:

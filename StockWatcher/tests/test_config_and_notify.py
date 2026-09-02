@@ -219,7 +219,17 @@ class TestGrouping:
     def test_sizes_at_the_same_price_share_one_message(self):
         groups = group_hits([hit("9.5"), hit("10")])
         assert len(groups) == 1
-        assert summarize(groups[0])["variant"] == "10, 9.5"
+        assert summarize(groups[0])["variant"] == "9.5, 10"
+
+    def test_sizes_are_listed_smallest_first(self):
+        """Sorting labels as strings would render "10, 9.5"."""
+        groups = group_hits([hit("11"), hit("9.5"), hit("10")])
+        assert summarize(groups[0])["variant"] == "9.5, 10, 11"
+
+    def test_non_numeric_variants_fall_back_to_alphabetical(self):
+        """The engine is generic: variants are not always sizes."""
+        groups = group_hits([hit("Red"), hit("Blue")])
+        assert summarize(groups[0])["variant"] == "Blue, Red"
 
     def test_different_prices_are_not_merged(self):
         """Otherwise the message could only say "from $X" — the exact failure
@@ -268,7 +278,7 @@ class TestConsoleNotifier:
     async def test_prints_every_batch(self, capsys):
         await ConsoleNotifier().send(Alert((hit("9.5"), hit("10"))))
         out = capsys.readouterr().out
-        assert "talla 10, 9.5" in out
+        assert "talla 9.5, 10" in out
 
     @pytest.mark.asyncio
     async def test_empty_alert_prints_nothing(self, capsys):

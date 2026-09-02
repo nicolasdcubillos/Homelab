@@ -186,6 +186,61 @@ class TestNullStore:
             assert await state.get_states(["a"]) == {}
 
 
+class TestTransitionsAreProviderAgnostic:
+    """Suppression must work identically whichever provider found the stock.
+
+    Nike and the Playwright stores arrive through a completely different code
+    path (headless browser, GTIN join) than the Shopify JSON providers, so it
+    is worth pinning that they are not special-cased anywhere downstream.
+    """
+
+    def nike_hit(self, variant: str = "10") -> Hit:
+        return Hit(
+            watch_name="Nike Mind 002",
+            store_host="www.nike.com",
+            store_name="Nike",
+            provider="nike",
+            product_title="Nike Mind 002",
+            product_url="https://www.nike.com/t/mind-002/IR2176-101",
+            variant_label=variant,
+            price=Decimal("145"),
+            currency="USD",
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_nike_restock_alerts_once_then_goes_quiet(self, tmp_path):
+        target = self.nike_hit()
+        async with SqliteStateStore(tmp_path / "s.db") as state:
+            # Run 1: out of stock, nothing to say.
+            first = detect_transitions([(target, False)], await state.get_states([target.key]))
+            await state.set_states(first.updates)
+            assert first.new_hits == []
+
+            # Run 2: it restocks — alert.
+            second = detect_transitions([(target, True)], await state.get_states([target.key]))
+            await state.set_states(second.updates)
+            assert [h.variant_label for h in second.new_hits] == ["10"]
+
+            # Run 3: still in stock — silence, not a second message.
+            third = detect_transitions([(target, True)], await state.get_states([target.key]))
+            await state.set_states(third.updates)
+            assert third.new_hits == []
+            assert third.still_available == 1
+
+            # Run 4: sells out and restocks again — alert again.
+            await state.set_states(
+                detect_transitions([(target, False)], await state.get_states([target.key])).updates
+            )
+            fifth = detect_transitions([(target, True)], await state.get_states([target.key]))
+            assert [h.variant_label for h in fifth.new_hits] == ["10"]
+
+    def test_the_state_key_ignores_the_provider(self):
+        """Switching a store to a browser provider must not replay every alert."""
+        via_browser = self.nike_hit()
+        via_json = Hit(**{**via_browser.__dict__, "provider": "shopify"})
+        assert via_browser.key == via_json.key
+
+
 def test_store_display_name_falls_back_to_host():
     assert Store(host="kith.com").display_name == "kith.com"
     assert Store(host="kith.com", name="Kith").display_name == "Kith"
