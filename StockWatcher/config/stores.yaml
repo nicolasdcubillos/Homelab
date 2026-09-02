@@ -1,0 +1,67 @@
+# Seed store registry.
+#
+# Every host below was empirically verified to answer the unauthenticated
+# Shopify endpoints (`/search/suggest.json` and `<product>.js`), except where a
+# different `provider` is declared.
+#
+#   provider: shopify     generic Shopify JSON (no auth, exact per-variant stock)
+#   provider: footlocker  plain HTTPS + Chrome UA; needs ~2.5s between requests
+#   provider: playwright  headless chromium; for sites that 403 plain HTTP
+#
+# `country` lets a watch with `countries: [US]` skip non-US stores.
+
+stores:
+  # ---------------------------------------------------------------- Shopify
+  - { host: www.shoepalace.com,            name: Shoe Palace }
+  - { host: shopnicekicks.com,             name: Nice Kicks }
+  - { host: kith.com,                      name: Kith }
+  - { host: xhibition.co,                  name: Xhibition }
+  - { host: www.rockcitykicks.com,         name: Rock City Kicks }
+  - { host: www.dtlr.com,                  name: DTLR }
+  - { host: www.thedarksideinitiative.com, name: The Darkside Initiative }
+  - { host: capsuletoronto.com,            name: Capsule Toronto, country: CA }
+  - { host: stadiumgoods.com,              name: Stadium Goods }
+  - { host: www.bbbranded.com,             name: BB Branded }
+  - { host: notre-shop.com,                name: Notre }
+  - { host: svrn.com,                      name: SVRN }
+  - { host: www.lapstoneandhammer.com,     name: Lapstone & Hammer }
+  - { host: sneakerpolitics.com,           name: Sneaker Politics }
+  - { host: bodega.com,                    name: Bodega }
+  - { host: cncpts.com,                    name: Concepts }
+  - { host: undefeated.com,                name: Undefeated }
+  - { host: packershoes.com,               name: Packer Shoes }
+  - { host: www.socialstatuspgh.com,       name: Social Status }
+  - { host: featuresneakerboutique.com,    name: Feature }
+  - { host: www.renarts.com,               name: Renarts }
+  - { host: www.shoegallerymiami.com,      name: Shoe Gallery Miami }
+  - { host: www.solefly.com,               name: SoleFly }
+  - { host: shopcrsvr.com,                 name: CRSVR }
+  - { host: premierframeshop.com,          name: Premier }
+  - { host: www.leaders1354.com,           name: Leaders 1354 }
+  - { host: www.blendsus.com,              name: Blends }
+  - { host: www.trophyroomstore.com,       name: Trophy Room }
+  - { host: a-ma-maniere.com,              name: A Ma Maniere }
+  - { host: extrabutterny.com,             name: Extra Butter }
+  - { host: oneness287.com,                name: Oneness }
+  - { host: westnyc.com,                   name: West NYC }
+  - { host: www.wishatl.com,               name: Wish ATL }
+  - { host: properkicks.com,               name: Proper }
+  - { host: saintalfred.com,               name: Saint Alfred }
+  - { host: www.villa.com,                 name: VILLA }
+
+  # ------------------------------------------------------------- Foot Locker
+  - host: www.footlocker.com
+    name: Foot Locker
+    provider: footlocker
+    delay: 2.5
+
+  # -------------------------------------------- Playwright (403 on plain HTTP)
+  # Disabled by default: enable once `playwright install chromium` has been run
+  # (the Docker image does this for you).
+  - host: www.nike.com
+    name: Nike
+    provider: playwright
+    enabled: false
+    delay: 1.5
+    options:
+      profile: nike

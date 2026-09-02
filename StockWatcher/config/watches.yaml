@@ -1,0 +1,96 @@
+# StockWatcher watches.
+#
+# The vocabulary is deliberately generic: a "variant" is whatever axis the
+# product varies on (shoe size, storage capacity, ticket tier...).  Nothing in
+# the engine is shoe-specific.
+#
+# Fields
+#   name       human label, used in alerts and as the state key prefix
+#   match      list of term-groups; a product matches when EVERY word of ANY
+#              group appears in its title/vendor/colorway/url
+#   exclude    hard veto terms (women's listings, GS/kids, ...)
+#   variants   the axis values you want (shoe sizes here)
+#   gender     mens | womens | unisex — women's sizes never match a mens watch
+#   colors     SOFT preference: still alerts if absent, but the alert is flagged
+#   max_price  hard cap (retail only, no resale)
+#   countries  only scan stores in these countries
+#   notify     notifier channels
+
+defaults:
+  currency: USD
+  countries: [US]
+  notify: [whatsapp]
+  gender: mens
+  exclude:
+    - wmns
+    - women
+    - "women's"
+    - womens
+    - gs
+    - toddler
+    - infant
+    - preschool
+    - "grade school"
+
+watches:
+  - name: Nike Mind 001
+    match:
+      - mind 001
+      - "nike mind 001"
+    variants: ["9.5", "10"]
+    gender: mens
+    colors: [white, platinum, summit, sail, phantom, bone]
+    max_price: 160
+
+  - name: Nike Mind 002
+    match:
+      - mind 002
+      - "nike mind 002"
+    exclude:
+      - flyknit
+      - wmns
+      - women
+      - "women's"
+      - womens
+      - gs
+      - toddler
+      - infant
+      - preschool
+      - "grade school"
+    variants: ["9.5", "10"]
+    gender: mens
+    colors: [white, platinum, summit, sail, phantom, bone]
+    max_price: 160
+
+  - name: Nike Mind 002 Flyknit
+    match:
+      - mind 002 flyknit
+      - ir2176
+    variants: ["9.5", "10"]
+    gender: mens
+    colors: [white, platinum, summit, sail, phantom, bone]
+    max_price: 160
+
+# How often the store auto-discovery pass runs, and how aggressive it is.
+discovery:
+  enabled: true
+  every_n_runs: 3
+  backend: auto            # brave | bing | serpapi | auto | none
+  max_candidates: 25
+  max_promotions_per_run: 10
+  retire_after_failures: 5
+
+# Notification batching, to keep WhatsApp cost and noise down.
+notify_options:
+  max_hits_per_message: 6
+  max_messages_per_run: 5
+
+runtime:
+  concurrency: 18
+  timeout: 20
+  max_products_per_query: 8
+
+state:
+  backend: sqlite          # sqlite | azure_table
+  path: data/stockwatcher.db
+  table_name: stockwatcher
