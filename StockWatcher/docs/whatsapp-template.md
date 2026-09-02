@@ -86,9 +86,10 @@ then set `WHATSAPP_TEMPLATE_LANG=en_US`.
 
 ## 2. Azure side
 
-The Bicep in `infra/` provisions the Communication Services resource. The
-WhatsApp channel itself must be connected by hand — it requires an interactive
-Meta OAuth consent that has no ARM equivalent.
+The Terraform in `infra/` provisions the Communication Services resource (set
+`create_communication_service = false` if you made it by hand). The WhatsApp
+channel itself must be connected by hand — it requires an interactive Meta OAuth
+consent that has no ARM equivalent.
 
 1. **Azure Portal → your Communication Services resource → Advanced Messaging →
    Channels → Connect a channel → WhatsApp.**

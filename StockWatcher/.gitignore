@@ -9,3 +9,16 @@ __pycache__/
 data/
 *.db
 .ruff_cache/
+
+# Terraform.  .terraform.lock.hcl is deliberately NOT ignored -- committing it
+# pins provider versions for everyone, which is the whole point of a lock file.
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+# State and tfvars can hold the ACS connection string.
+terraform.tfvars
+*.auto.tfvars
+!terraform.tfvars.example

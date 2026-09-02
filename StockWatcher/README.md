@@ -236,27 +236,53 @@ merge, because a message must state the price of the size it is announcing.
 ## Deployment
 
 Scale-to-zero **Container Apps Job** on a cron schedule — no VM, so you pay only
-for the ~40s per run.
+for the ~40s per run. Infrastructure is **Terraform** (azurerm provider).
 
 ```bash
 az login
-export RESOURCE_GROUP=stockwatcher-rg
-export LOCATION=eastus
+cp infra/terraform.tfvars.example infra/terraform.tfvars
+$EDITOR infra/terraform.tfvars          # set name, location, whatsapp_to, ...
 ./scripts/deploy.sh
 ```
 
-The script builds the image, pushes to ACR, and runs
-`az deployment group create`. `infra/main.bicep` provisions:
+`scripts/deploy.sh` runs `terraform init`, applies once with
+`-target=azurerm_container_registry.this` to bootstrap the registry, builds the
+image with `az acr build` (server-side, so no local Docker and no
+Apple-Silicon/amd64 mismatch), then applies the rest with the new `image_tag`.
 
-- Container Apps Environment + **Job** (cron, default hourly — `cronExpression`)
+`infra/` provisions:
+
+- Container Apps Environment + **Job** (cron, default hourly — `cron_expression`)
 - Azure Container Registry (Basic)
 - Storage Account + Table (the production state store)
 - Log Analytics workspace
-- Communication Services
+- Communication Services (optional — see below)
 - A user-assigned managed identity with `AcrPull` + Table Data Contributor, so
   only the ACS connection string is stored as a secret
 
-Change the schedule with `-p cronExpression='0 */2 * * *'`.
+Terraform **owns the resource group**, so do not pre-create it with
+`az group create`. If it already exists, adopt it instead:
+
+```bash
+terraform -chdir=infra import azurerm_resource_group.this \
+  /subscriptions/<sub-id>/resourceGroups/stockwatcher-rg
+```
+
+Change the schedule by editing `cron_expression` in `terraform.tfvars` and
+re-running the script.
+
+**Secrets never go in `terraform.tfvars`** (it is gitignored, but state is not
+encrypted by default). Pass them as environment variables:
+
+```bash
+export TF_VAR_acs_connection_string='endpoint=https://...;accesskey=...'
+export TF_VAR_search_api_key='...'
+```
+
+If you created the Communication Services resource by hand, set
+`create_communication_service = false` and supply
+`TF_VAR_acs_connection_string`; otherwise Terraform creates it and wires its
+connection string in automatically.
 
 The image includes Playwright's Chromium and its system dependencies, and sets
 `STOCKWATCHER_ENABLE_BROWSER_STORES=1`, so the Nike provider is active in the
@@ -268,7 +294,7 @@ job. Locally those stores stay disabled until you run
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q      # 202 tests, no network
+.venv/bin/python -m pytest -q      # 206 tests, no network
 .venv/bin/ruff check src tests
 .venv/bin/ruff format src tests
 ```

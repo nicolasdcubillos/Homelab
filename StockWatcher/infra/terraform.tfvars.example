@@ -1,0 +1,91 @@
+# Copy to terraform.tfvars and edit.  terraform.tfvars is gitignored.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# SECRETS: do NOT put acs_connection_string or search_api_key in this file.
+# Pass them as environment variables instead, so they never touch the repo:
+#
+#   export TF_VAR_acs_connection_string='endpoint=https://...;accesskey=...'
+#   export TF_VAR_search_api_key='...'
+#
+# They still end up in terraform.tfstate, so keep state private (or use a
+# remote backend with encryption -- see providers.tf).
+
+# ---------------------------------------------------------------------------
+# Required
+# ---------------------------------------------------------------------------
+
+# Azure subscription to deploy into.  Omit to use whatever `az account show`
+# is currently set to.
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+
+# Base name for every resource.  3-17 chars, lowercase alphanumeric + hyphens.
+# Storage/registry names get a random 6-char suffix appended for uniqueness.
+name = "stockwatcher"
+
+# Region.  Container Apps Jobs are not available everywhere; eastus is safe.
+location = "eastus"
+
+# ---------------------------------------------------------------------------
+# Schedule
+# ---------------------------------------------------------------------------
+
+# Standard 5-field cron, UTC.  Default is hourly on the hour.
+#   "0 * * * *"      every hour
+#   "*/30 * * * *"   every 30 minutes
+#   "0 12,20 * * *"  twice a day
+cron_expression = "0 * * * *"
+
+# Container image tag.  scripts/deploy.sh overrides this with the tag it
+# just built and pushed, so you rarely set it by hand.
+# image_tag = "latest"
+
+# ---------------------------------------------------------------------------
+# Sizing
+# ---------------------------------------------------------------------------
+
+# A scan of ~35 stores takes well under a minute; a Playwright store adds a
+# few seconds.  0.5 vCPU / 1Gi is enough, but Chromium wants the memory.
+# cpu    = 0.5
+# memory = "1Gi"
+
+# Hard kill for a single run.
+# replica_timeout_in_seconds = 900
+
+# log_retention_days = 30
+
+# ---------------------------------------------------------------------------
+# WhatsApp / Azure Communication Services
+# ---------------------------------------------------------------------------
+
+# Let Terraform create the Communication Services resource.  Set to false if
+# you already created it by hand in the portal -- then supply its connection
+# string via TF_VAR_acs_connection_string.
+create_communication_service = true
+
+# Where ACS stores data at rest.  Must be one of the supported data
+# locations; "United States" is the right pick for a US WhatsApp number.
+# communication_data_location = "United States"
+
+# The Channel Registration ID of the WhatsApp channel, from
+# Communication Services -> Advanced Messaging -> Channels in the portal.
+# You can only get this AFTER the resource exists and the WhatsApp number is
+# connected, so the usual flow is: apply once, connect the channel, then set
+# this and apply again.
+whatsapp_channel_registration_id = ""
+
+# Destination phone number in E.164 (Colombia = +57).
+whatsapp_to = "+573001234567"
+
+# Must match the template approved in Meta WhatsApp Manager.
+# See docs/whatsapp-template.md -- the parameter names are load-bearing.
+whatsapp_template_name = "stockwatcher_restock"
+whatsapp_template_lang = "es"
+
+# ---------------------------------------------------------------------------
+# Store auto-discovery (optional)
+# ---------------------------------------------------------------------------
+
+# "brave", "bing" or "serpapi".  Without an API key discovery degrades to a
+# no-op and the job just scans the stores in config/stores.yaml.
+search_backend = "brave"

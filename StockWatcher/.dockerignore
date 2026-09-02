@@ -1,0 +1,22 @@
+# Keep the build context small.  `az acr build` uploads the whole context to
+# Azure, and .venv + infra/.terraform are ~440MB of things the image rebuilds
+# or never needs.
+.venv/
+.git
+.gitignore
+infra/
+scripts/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.python-version
+.env
+data/
+*.db
+docs/
+
+# NOTE: README.md is NOT excluded -- the Dockerfile COPYs it, because the
+# pyproject `readme` field makes pip fail without it.
