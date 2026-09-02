@@ -48,10 +48,23 @@ def build_notifier(name: str, options: dict | None = None) -> Notifier:
 
 
 def group_hits(hits: Iterable[Hit]) -> list[list[Hit]]:
-    """Group hits by (watch, store, product) so one message covers many sizes."""
-    groups: dict[tuple[str, str, str], list[Hit]] = {}
+    """Group hits by (watch, store, product, **price**) so one message covers many sizes.
+
+    Price is part of the key on purpose.  On consignment stores every size is
+    priced separately, so a group spanning several prices could only be
+    summarised as "from $X" — and the user explicitly needs the price *of the
+    size that is available*.  Keying on price means every message quotes one
+    exact figure; sizes that happen to share a price (the common case) still
+    collapse into a single message.
+    """
+    groups: dict[tuple[str, str, str, str], list[Hit]] = {}
     for hit in hits:
-        key = (hit.watch_name, hit.store_host, hit.product_url.split("?")[0])
+        key = (
+            hit.watch_name,
+            hit.store_host,
+            hit.product_url.split("?")[0],
+            "" if hit.price is None else str(hit.price),
+        )
         groups.setdefault(key, []).append(hit)
     return [sorted(group, key=lambda h: h.variant_label) for group in groups.values()]
 
@@ -71,7 +84,12 @@ def cheapest_price(hits: Sequence[Hit]) -> Decimal | None:
 
 
 def summarize(hits: Sequence[Hit]) -> dict[str, str]:
-    """Render the named template parameters for a batch of hits."""
+    """Render the named template parameters for a batch of hits.
+
+    Batches come from :func:`group_hits`, which keys on price, so every hit
+    here shares one price and the rendered figure is the price of the sizes
+    listed — never a "from $X" that the user cannot actually pay.
+    """
     first = hits[0]
     variants = ", ".join(dict.fromkeys(h.variant_label for h in hits))
     price = cheapest_price(hits)

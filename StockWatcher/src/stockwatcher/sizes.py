@@ -65,14 +65,21 @@ _DUAL_RE = re.compile(
 )
 # "9.5W", "9.5 W", "W 9.5", "M 9.5", "MENS 9.5", "US 9.5", "US M 9.5"
 _SIZE_RE = re.compile(
-    r"^(?:US\s*)?"
+    r"^(?:(?:US|SIZE|TALLA)\s*)*"
     r"(?P<pre>M|MEN|MENS|MEN'S|W|WM|WMNS|WOMEN|WOMENS|WOMEN'S)?\s*"
-    r"(?P<value>\d{1,2}(?:\.\d)?|\d{1,2}\s?1/2)\s*"
+    r"(?P<value>\d{1,2}(?:\.\d)?)\s*"
     r"(?P<post>M|MEN|MENS|W|WM|WMNS|WOMENS)?$",
     re.IGNORECASE,
 )
 _KIDS_SUFFIX_RE = re.compile(r"^\d{1,2}(?:\.\d)?\s*(Y|C|K|GS|PS|TD|BG|BP)$", re.IGNORECASE)
 _NON_US_SCALE_RE = re.compile(r"\b(EU|EUR|UK|CM|JP|FR|MX)\b", re.IGNORECASE)
+#: "9 1/2" -> "9.5".  Applied before any slash handling, because the fraction's
+#: own slash would otherwise be mistaken for a colour/size separator and the
+#: label would silently parse as size 2.
+_FRACTION_RE = re.compile(r"(?<=\d)\s*1\s*/\s*2\b")
+#: A bare "W" token marks a women's listing ("Nike W Air Max").  The negative
+#: lookahead keeps the "w/" abbreviation ("Black w/ White") out of it.
+_WOMENS_TOKEN_RE = re.compile(r"\bw\b(?!\s*/)")
 
 
 @dataclass(frozen=True, order=True)
@@ -114,6 +121,8 @@ def infer_gender(text: str | None) -> Gender:
     for marker in _WOMENS_MARKERS:
         if marker in haystack:
             return Gender.WOMENS
+    if _WOMENS_TOKEN_RE.search(haystack):
+        return Gender.WOMENS
     for marker in _MENS_MARKERS:
         if marker in haystack:
             return Gender.MENS
@@ -121,8 +130,11 @@ def infer_gender(text: str | None) -> Gender:
 
 
 def is_kids(text: str | None) -> bool:
-    haystack = f" {normalize_text(text)} "
-    return any(marker in haystack for marker in _KIDS_MARKERS)
+    raw = normalize_text(text)
+    haystack = f" {raw} "
+    if any(marker in haystack for marker in _KIDS_MARKERS):
+        return True
+    return bool(_KIDS_SUFFIX_RE.match(raw))
 
 
 def parse_size(label: str | None, default_gender: Gender = Gender.UNISEX) -> Size | None:
@@ -137,6 +149,7 @@ def parse_size(label: str | None, default_gender: Gender = Gender.UNISEX) -> Siz
     raw = re.sub(r"\s+", " ", str(label)).strip()
     if not raw:
         return None
+    raw = _FRACTION_RE.sub(".5", raw).replace(" .5", ".5")
 
     # Some stores encode "colour / size" in a compound variant title, e.g.
     # "Orange / 9" or "PINK SMOKE/METALLIC SILVER-MYSTIC DATES / 9.5".  The

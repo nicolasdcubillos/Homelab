@@ -197,6 +197,7 @@ class Runner:
         # serializes them anyway.  Running them as a gather only made the
         # request burst look more robotic.
         refs: dict[str, ProductRef] = {}
+        failures: list[Exception] = []
         for query in queries:
             try:
                 results = await provider.search(query)
@@ -207,11 +208,19 @@ class Runner:
                 raise
             except Exception as exc:
                 log.debug("%s search %r failed: %s", store.host, query, exc)
+                failures.append(exc)
                 continue
             for ref in results[: self.config.runtime.max_products_per_query]:
                 if not self._ref_is_interesting(ref, watches):
                     continue
                 refs.setdefault(_canonical(ref.url), ref)
+
+        # One flaky query is tolerable; every query failing means the store told
+        # us nothing at all.  Reporting that as "scanned, no stock" would hide a
+        # broken store forever, because a clean scan resets its fail_count and
+        # auto-retire would never fire.
+        if failures and len(failures) == len(queries):
+            raise failures[0]
         return list(refs.values())
 
     @staticmethod
