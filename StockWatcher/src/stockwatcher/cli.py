@@ -77,6 +77,7 @@ async def _cmd_run(args: argparse.Namespace) -> int:
         concurrency=config.runtime.concurrency,
         timeout=config.runtime.timeout,
         default_delay=config.runtime.default_delay,
+        rate=config.runtime.rate,
         user_agent=config.runtime.user_agent,
     )
     async with state:
@@ -102,6 +103,7 @@ async def _cmd_discover(args: argparse.Namespace) -> int:
     http = HttpClient(
         concurrency=config.runtime.concurrency,
         timeout=config.runtime.timeout,
+        rate=config.runtime.rate,
         user_agent=config.runtime.user_agent,
     )
     async with state:
@@ -169,6 +171,7 @@ async def _cmd_probe(args: argparse.Namespace) -> int:
     http = HttpClient(
         concurrency=config.runtime.concurrency,
         timeout=config.runtime.timeout,
+        rate=config.runtime.rate,
         user_agent=config.runtime.user_agent,
     )
     provider = build_provider(store, http)

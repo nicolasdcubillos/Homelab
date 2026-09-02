@@ -188,6 +188,8 @@ class RunSummary:
     notifications_sent: int = 0
     errors: list[str] = field(default_factory=list)
     discovered_stores: list[str] = field(default_factory=list)
+    #: host -> wall-clock seconds, used to spot a store that drags a run out.
+    store_seconds: dict[str, float] = field(default_factory=dict)
 
     @property
     def duration_seconds(self) -> float:
@@ -204,6 +206,9 @@ class RunSummary:
             "new_hits": self.new_hits,
             "notifications_sent": self.notifications_sent,
             "discovered_stores": self.discovered_stores,
+            "slowest_stores": dict(
+                sorted(self.store_seconds.items(), key=lambda kv: kv[1], reverse=True)[:5]
+            ),
             "errors": self.errors[:20],
         }
 

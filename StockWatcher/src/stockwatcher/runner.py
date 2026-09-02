@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 
@@ -22,7 +23,7 @@ from .config import Config, Watch
 from .http import HttpClient, RateLimited
 from .matching import build_observations, store_allowed, text_matches
 from .models import Alert, Hit, Product, ProductRef, RunSummary, Store, StoreRecord
-from .notifiers import Notifier, NotifierError, build_notifier
+from .notifiers import Notifier, build_notifier
 from .providers import ProviderError, build_provider
 from .state import StateStore, detect_transitions
 
@@ -39,6 +40,15 @@ def merge_stores(config_stores: Sequence[Store], records: Iterable[StoreRecord])
             continue
         merged[record.host] = record.to_store()
     return list(merged.values())
+
+
+def _same_listing(left: Hit, right: Hit) -> bool:
+    """True when two hits describe the same size of the same listing."""
+    return (
+        left.store_host == right.store_host
+        and left.product_url == right.product_url
+        and left.variant_label == right.variant_label
+    )
 
 
 def consolidate_queries(queries: Sequence[str], limit: int = 4) -> list[str]:
@@ -160,11 +170,13 @@ class Runner:
         if not relevant:
             return []
         provider = build_provider(store, self.http)
+        started = time.monotonic()
         try:
             refs = await self._collect_refs(provider, store, relevant)
             products = await self._fetch_products(provider, store, refs)
         finally:
             await provider.aclose()
+            self.summary.store_seconds[store.host] = round(time.monotonic() - started, 1)
 
         observations: list[tuple[Hit, bool]] = []
         for product in products:
@@ -231,14 +243,19 @@ class Runner:
         per_channel: dict[str, list[Hit]] = {}
         for hit in hits:
             for channel in channels_by_watch.get(hit.watch_name, ["whatsapp"]):
-                per_channel.setdefault(channel, []).append(hit)
+                bucket = per_channel.setdefault(channel, [])
+                # Two watches can match the same listing (e.g. "mind 002" and
+                # "mind 002 flyknit").  Send one message, not two identical ones.
+                if any(_same_listing(hit, seen) for seen in bucket):
+                    continue
+                bucket.append(hit)
 
         for channel, channel_hits in per_channel.items():
             try:
                 notifier = self._notifier(channel)
                 await notifier.send(Alert(tuple(channel_hits)))
                 self.summary.notifications_sent += len(channel_hits)
-            except (NotifierError, Exception) as exc:
+            except Exception as exc:
                 message = f"notifier {channel}: {exc}"
                 self.summary.errors.append(message)
                 log.error("notification failed: %s", message)
@@ -320,6 +337,7 @@ async def run_once(
         concurrency=config.runtime.concurrency,
         timeout=config.runtime.timeout,
         default_delay=config.runtime.default_delay,
+        rate=config.runtime.rate,
         user_agent=config.runtime.user_agent,
     )
     runner = Runner(config, state, http, dry_run=dry_run)

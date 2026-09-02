@@ -97,8 +97,11 @@ class RuntimeConfig:
     concurrency: int = 18
     timeout: float = 20.0
     default_delay: float = 0.0
+    #: Global requests/second ceiling. Shopify rate-limits per client IP across
+    #: every storefront it hosts, so this budget is shared by all stores.
+    rate: float = 5.0
     max_products_per_query: int = 8
-    max_queries_per_store: int = 4
+    max_queries_per_store: int = 3
     user_agent: str = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"

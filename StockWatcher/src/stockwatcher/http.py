@@ -46,6 +46,39 @@ class RateLimited(RuntimeError):
     """A store throttled or challenged us.  Reported, never fatal."""
 
 
+class _RateLimiter:
+    """Token-bucket limiter for the *whole* client.
+
+    Shopify's edge rate-limits per client IP across **all** storefronts it
+    hosts, not per store.  Scanning 37 Shopify shops therefore trips a single
+    shared budget: bursting made every host return 429 at once, while pacing
+    the same requests at ~4/s returned 200 from every one of them.  So the
+    limiter is global rather than per host.
+    """
+
+    def __init__(self, rate: float) -> None:
+        self.rate = rate
+        self._lock = asyncio.Lock()
+        self._next_slot = 0.0
+
+    async def acquire(self) -> None:
+        if self.rate <= 0:
+            return
+        interval = 1.0 / self.rate
+        async with self._lock:
+            now = time.monotonic()
+            slot = max(now, self._next_slot)
+            self._next_slot = slot + interval
+        wait = slot - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+
+    async def penalize(self, seconds: float) -> None:
+        """Push every queued request back after a throttling response."""
+        async with self._lock:
+            self._next_slot = max(self._next_slot, time.monotonic() + seconds)
+
+
 class HttpClient:
     """Thin wrapper over ``httpx.AsyncClient``.
 
@@ -73,12 +106,14 @@ class HttpClient:
         user_agent: str = DEFAULT_USER_AGENT,
         per_host_concurrency: int = 1,
         max_retries: int = 2,
+        rate: float = 5.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self._semaphore = asyncio.Semaphore(max(1, concurrency))
         self._default_delay = default_delay
         self._per_host_concurrency = max(1, per_host_concurrency)
         self._max_retries = max(0, max_retries)
+        self._limiter = _RateLimiter(rate)
         self._host_locks: dict[str, asyncio.Lock] = {}
         self._host_semaphores: dict[str, asyncio.Semaphore] = {}
         self._host_last: dict[str, float] = {}
@@ -162,6 +197,7 @@ class HttpClient:
 
         for attempt in range(self._max_retries + 1):
             await self._throttle(host, effective_delay)
+            await self._limiter.acquire()
             async with self._semaphore, self._semaphore_for(host):
                 log.debug("GET %s", url)
                 response = await self._client.get(url, headers=headers, params=params)
@@ -169,6 +205,9 @@ class HttpClient:
                 return response
             wait = self._retry_after(response, attempt)
             log.debug("HTTP %s from %s; retrying in %.1fs", response.status_code, host, wait)
+            # The budget is shared across every Shopify host, so slow the whole
+            # client down rather than just this request.
+            await self._limiter.penalize(wait)
             await asyncio.sleep(wait)
 
         assert response is not None

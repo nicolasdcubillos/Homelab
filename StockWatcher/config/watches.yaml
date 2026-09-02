@@ -86,9 +86,11 @@ notify_options:
   max_messages_per_run: 5
 
 runtime:
-  concurrency: 18
+  concurrency: 12
+  rate: 5.0            # global requests/second (Shopify limits per IP, not per host)
   timeout: 20
   max_products_per_query: 8
+  max_queries_per_store: 3
 
 state:
   backend: sqlite          # sqlite | azure_table
