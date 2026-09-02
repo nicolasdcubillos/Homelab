@@ -35,8 +35,6 @@ stores:
   - { host: www.renarts.com,               name: Renarts }
   - { host: www.shoegallerymiami.com,      name: Shoe Gallery Miami }
   - { host: www.solefly.com,               name: SoleFly }
-  - { host: shopcrsvr.com,                 name: CRSVR }
-  - { host: premierframeshop.com,          name: Premier }
   - { host: www.leaders1354.com,           name: Leaders 1354 }
   - { host: www.blendsus.com,              name: Blends }
   - { host: www.trophyroomstore.com,       name: Trophy Room }
@@ -45,9 +43,17 @@ stores:
   - { host: oneness287.com,                name: Oneness }
   - { host: westnyc.com,                   name: West NYC }
   - { host: www.wishatl.com,               name: Wish ATL }
-  - { host: properkicks.com,               name: Proper }
   - { host: saintalfred.com,               name: Saint Alfred }
-  - { host: www.villa.com,                 name: VILLA }
+
+  # Seeded from the original research but unreachable as of the last run:
+  # shopcrsvr.com and premierframeshop.com no longer resolve, properkicks.com
+  # and www.villa.com serve invalid certificates.  Kept (disabled) rather than
+  # deleted so the list stays a record of what was surveyed — flip `enabled`
+  # back to true to retry them.
+  - { host: shopcrsvr.com,        name: CRSVR,    enabled: false }
+  - { host: premierframeshop.com, name: Premier,  enabled: false }
+  - { host: properkicks.com,      name: Proper,   enabled: false }
+  - { host: www.villa.com,        name: VILLA,    enabled: false }
 
   # ------------------------------------------------------------- Foot Locker
   - host: www.footlocker.com

@@ -119,6 +119,7 @@ class WhatsAppNotifier(Notifier):
             batches = batches[: self.max_messages_per_run]
         for batch in batches:
             await asyncio.to_thread(self._send_batch, batch)
+            self.messages_sent += 1
 
     def _send_batch(self, hits: list[Hit]) -> None:
         client = self._get_client()

@@ -30,6 +30,7 @@ class ConsoleNotifier(Notifier):
             print(f"\n--- message {index}/{len(batches)} ---", file=self.stream)
             print(render_text(batch), file=self.stream)
         self.stream.flush()
+        self.messages_sent += len(batches)
 
 
 register_notifier("console", lambda options: ConsoleNotifier(options))

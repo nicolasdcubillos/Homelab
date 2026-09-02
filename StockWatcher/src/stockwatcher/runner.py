@@ -262,8 +262,10 @@ class Runner:
         for channel, channel_hits in per_channel.items():
             try:
                 notifier = self._notifier(channel)
+                before = getattr(notifier, "messages_sent", 0)
                 await notifier.send(Alert(tuple(channel_hits)))
-                self.summary.notifications_sent += len(channel_hits)
+                self.summary.hits_notified += len(channel_hits)
+                self.summary.messages_sent += getattr(notifier, "messages_sent", 0) - before
             except Exception as exc:
                 message = f"notifier {channel}: {exc}"
                 self.summary.errors.append(message)

@@ -18,6 +18,11 @@ class Notifier(ABC):
 
     name: str = "base"
 
+    #: Messages actually dispatched, cumulative.  WhatsApp bills per message
+    #: and a batch of restocks can collapse into one, so the run summary needs
+    #: this alongside the hit count.  Implementations increment it in ``send``.
+    messages_sent: int = 0
+
     @abstractmethod
     async def send(self, alert: Alert) -> None: ...
 

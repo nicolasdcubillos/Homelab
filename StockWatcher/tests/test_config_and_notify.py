@@ -239,3 +239,18 @@ class TestConsoleNotifier:
     async def test_empty_alert_prints_nothing(self, capsys):
         await ConsoleNotifier().send(Alert(()))
         assert capsys.readouterr().out == ""
+
+    @pytest.mark.asyncio
+    async def test_counts_messages_not_hits(self, capsys):
+        """WhatsApp bills per message; two sizes at one price cost one message."""
+        notifier = ConsoleNotifier()
+        await notifier.send(Alert((hit("9.5"), hit("10"))))
+        assert notifier.messages_sent == 1
+
+    @pytest.mark.asyncio
+    async def test_message_count_accumulates_and_respects_the_cap(self, capsys):
+        notifier = ConsoleNotifier({"max_hits_per_message": 1})
+        await notifier.send(Alert((hit("9.5"), hit("10"))))
+        assert notifier.messages_sent == 2
+        await notifier.send(Alert((hit("11"),)))
+        assert notifier.messages_sent == 3

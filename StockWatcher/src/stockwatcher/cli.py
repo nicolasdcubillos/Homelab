@@ -136,14 +136,19 @@ async def _cmd_stores(args: argparse.Namespace) -> int:
     async with state:
         records = await state.list_stores()
 
-    print(f"{len(config.stores)} configured store(s), {len(records)} registry record(s)\n")
+    enabled = sum(1 for s in config.stores if s.enabled)
+    print(
+        f"{len(config.stores)} configured store(s), {enabled} enabled, "
+        f"{len(records)} registry record(s)\n"
+    )
+    # "x" marks an *enabled* store, the way a ticked checkbox reads.
     for store in config.stores:
-        flag = " " if store.enabled else "x"
+        flag = "x" if store.enabled else " "
         print(f"[{flag}] {store.host:38s} {store.provider:11s} {store.country}  (config)")
     for record in sorted(records, key=lambda r: r.host):
         if any(s.host == record.host for s in config.stores):
             continue
-        flag = " " if record.enabled else "x"
+        flag = "x" if record.enabled else " "
         print(
             f"[{flag}] {record.host:38s} {record.provider:11s} {record.country}  "
             f"({record.source}, fails={record.fail_count})"

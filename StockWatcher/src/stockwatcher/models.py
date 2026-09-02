@@ -185,7 +185,10 @@ class RunSummary:
     variants_seen: int = 0
     hits: int = 0
     new_hits: int = 0
-    notifications_sent: int = 0
+    #: Restocks handed to a notifier, after cross-watch de-duplication.
+    hits_notified: int = 0
+    #: WhatsApp bills per *message*, not per restock, so track both.
+    messages_sent: int = 0
     errors: list[str] = field(default_factory=list)
     discovered_stores: list[str] = field(default_factory=list)
     #: host -> wall-clock seconds, used to spot a store that drags a run out.
@@ -204,7 +207,8 @@ class RunSummary:
             "variants_seen": self.variants_seen,
             "hits": self.hits,
             "new_hits": self.new_hits,
-            "notifications_sent": self.notifications_sent,
+            "hits_notified": self.hits_notified,
+            "messages_sent": self.messages_sent,
             "discovered_stores": self.discovered_stores,
             "slowest_stores": dict(
                 sorted(self.store_seconds.items(), key=lambda kv: kv[1], reverse=True)[:5]
