@@ -114,6 +114,8 @@ class HttpClient:
         self._per_host_concurrency = max(1, per_host_concurrency)
         self._max_retries = max(0, max_retries)
         self._limiter = _RateLimiter(rate)
+        #: Exposed so browser-based providers can present the same identity.
+        self.user_agent = user_agent
         self._host_locks: dict[str, asyncio.Lock] = {}
         self._host_semaphores: dict[str, asyncio.Semaphore] = {}
         self._host_last: dict[str, float] = {}

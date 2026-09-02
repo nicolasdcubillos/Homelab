@@ -60,8 +60,9 @@ stores:
   # (the Docker image does this for you).
   - host: www.nike.com
     name: Nike
-    provider: playwright
-    enabled: false
-    delay: 1.5
+    provider: nike          # browser-loaded PDP + unauthenticated GTIN lookup
+    enabled: false          # enable after `playwright install chromium`
+    delay: 2.0
     options:
       profile: nike
+      market: US

@@ -22,16 +22,19 @@ from .shopify import ShopifyProvider
 log = logging.getLogger(__name__)
 
 try:  # pragma: no cover - depends on optional extra
+    from .nike import NikeProvider
     from .playwright_provider import PlaywrightProvider
 
     _PLAYWRIGHT_AVAILABLE = True
 except Exception as exc:  # pragma: no cover - optional dependency
+    NikeProvider = None  # type: ignore[assignment]
     PlaywrightProvider = None  # type: ignore[assignment]
     _PLAYWRIGHT_AVAILABLE = False
     log.debug("playwright provider unavailable: %s", exc)
 
 __all__ = [
     "FootLockerProvider",
+    "NikeProvider",
     "PlaywrightProvider",
     "Provider",
     "ProviderError",
