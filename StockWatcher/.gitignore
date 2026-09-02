@@ -22,3 +22,6 @@ crash.*.log
 terraform.tfvars
 *.auto.tfvars
 !terraform.tfvars.example
+# Saved plans embed variable values -- including secrets -- in cleartext.
+tfplan
+*.tfplan
