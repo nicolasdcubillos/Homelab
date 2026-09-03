@@ -1,0 +1,42 @@
+name: One-off VM setup (venvs + systemd migration)
+on:
+  workflow_dispatch: {}
+
+jobs:
+  setup:
+    runs-on: [self-hosted, homelab-vm]
+    steps:
+      - name: Build StockWatcher venv
+        run: |
+          set -e
+          cd /opt/services/homelab/StockWatcher
+          if [ ! -f .venv/bin/stockwatcher ]; then
+            python3.11 -m venv .venv
+            .venv/bin/pip install -q -U pip
+            .venv/bin/pip install -q -e '.[azure,browser]'
+          fi
+          .venv/bin/stockwatcher --help > /dev/null
+          echo "stockwatcher venv OK"
+
+      - name: Build PortfolioWatcher venv
+        run: |
+          set -e
+          cd /opt/services/homelab/PortfolioWatcher
+          if [ ! -f .venv/bin/portfoliowatcher ]; then
+            python3.11 -m venv .venv
+            .venv/bin/pip install -q -U pip
+            .venv/bin/pip install -q -e .
+          fi
+          .venv/bin/portfoliowatcher --help > /dev/null
+          echo "portfoliowatcher venv OK"
+
+      - name: Build HomelabFrontend venv
+        run: |
+          set -e
+          cd /opt/services/homelab/HomelabFrontend
+          if [ ! -f .venv/bin/pip ]; then
+            python3.11 -m venv .venv
+            .venv/bin/pip install -q -U pip
+            .venv/bin/pip install -q -e .
+          fi
+          .venv/bin/python -c "import homelab_dashboard" && echo "dashboard import OK"
