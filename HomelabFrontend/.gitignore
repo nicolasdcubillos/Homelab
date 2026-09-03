@@ -1,0 +1,34 @@
+# Registro real de apps administradas - NUNCA se versiona (contiene rutas
+# específicas de la VM de producción; copia apps.yaml.example para empezar).
+apps.yaml
+
+# Logs de ejecuciones de jobs.
+logs/
+logs/**
+
+# Historial de jobs (SQLite).
+dashboard.db
+dashboard.db-journal
+dashboard.db-wal
+dashboard.db-shm
+
+# Entornos virtuales.
+.venv/
+venv/
+
+# Python.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Backups de configuración con timestamp (ej. portfolio.yaml.bak.20260903-153000).
+*.bak.*
+
+# Editores / SO.
+.DS_Store
+.idea/
+.vscode/
