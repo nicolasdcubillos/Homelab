@@ -114,7 +114,12 @@ escribir). No se hacen llamadas reales a Azure ni SSH a ninguna VM.
   del dashboard (que solo escucha en `127.0.0.1`). Ver `Caddyfile.example`
   para una plantilla de referencia — el `Caddyfile` real con dominio y
   credenciales reales se configura fuera de este repo.
-- Se recomienda correr el dashboard como un servicio systemd (`ExecStart=
-  /opt/services/homelabdashboard/.venv/bin/homelab-dashboard`,
-  `WorkingDirectory=/opt/services/homelabdashboard`) para que
+- Se recomienda correr el dashboard como un servicio systemd (ver
+  `systemd/homelab-dashboard.service.example`), con
+  `WorkingDirectory=/opt/services/homelab-dashboard` para que
   `apps.yaml`/`dashboard.db`/`logs/` relativos apunten al lugar correcto.
+- **Runbook completo del despliegue real** (dominio, Caddy, systemd, NSG,
+  verificación paso a paso): ver [`docs/deployment.md`](docs/deployment.md).
+  Nota clave: usa el DNS gratuito `*.cloudapp.azure.com` (vía
+  `domain_name_label` en la IP pública de Terraform) en vez de servicios
+  tipo `nip.io`, que varias VPNs bloquean por defecto.

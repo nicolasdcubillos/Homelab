@@ -6,6 +6,11 @@
 #
 # El dashboard debe seguir escuchando solo en 127.0.0.1 (DASHBOARD_HOST), y
 # es Caddy quien expone el puerto público con TLS + Basic Auth.
+#
+# Dominio: usa el DNS gratuito que Azure asigna a la IP pública de la VM
+# (domain_name_label -> *.cloudapp.azure.com) en vez de servicios tipo
+# nip.io/sslip.io — varias VPNs los bloquean por defecto. Ver
+# docs/deployment.md para el detalle completo.
 
 dashboard.tu-dominio.example {
     basic_auth {
