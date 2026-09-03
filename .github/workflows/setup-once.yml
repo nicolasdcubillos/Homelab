@@ -1,15 +1,26 @@
-name: One-off VM setup (verify)
+name: One-off VM setup (fix env paths + verify)
 on:
   workflow_dispatch: {}
 
 jobs:
-  verify:
+  fix:
     runs-on: [self-hosted, homelab-vm]
     steps:
-      - name: Status of all services
+      - name: Fix stale paths in .env files
         run: |
-          systemctl is-active stockwatcher-run.timer portfoliowatcher-daily.timer portfoliowatcher-weekly.timer homelab-dashboard.service
-          echo "---dashboard curl---"
-          curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/ || echo "curl failed"
-          echo "---manual stockwatcher run from new path---"
+          set -e
+          sed -i 's|/opt/services/stockwatcher|/opt/services/homelab/StockWatcher|g' /opt/services/homelab/StockWatcher/.env
+          sed -i 's|/opt/services/portfoliowatcher|/opt/services/homelab/PortfolioWatcher|g' /opt/services/homelab/PortfolioWatcher/.env
+          grep -n "PATH\|_STATE" /opt/services/homelab/StockWatcher/.env
+          grep -n "PATH\|_STATE" /opt/services/homelab/PortfolioWatcher/.env || true
+
+      - name: Re-run StockWatcher dry-run from new path
+        run: |
+          set -e
           sudo -u azureuser bash -c 'export PLAYWRIGHT_BROWSERS_PATH=/home/azureuser/.cache/ms-playwright; cd /opt/services/homelab/StockWatcher && .venv/bin/stockwatcher run --dry-run --no-discovery 2>&1 | tail -20'
+
+      - name: Confirm dashboard fully active
+        run: |
+          sleep 5
+          systemctl is-active homelab-dashboard.service
+          curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
