@@ -1,0 +1,31 @@
+name: Deploy PortfolioWatcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'PortfolioWatcher/**'
+      - '.github/workflows/deploy-portfoliowatcher.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, homelab-vm]
+    steps:
+      - name: Pull latest and reinstall
+        run: |
+          set -e
+          cd /opt/services/homelab
+          sudo -u azureuser git fetch origin main
+          sudo -u azureuser git reset --hard origin/main
+          cd PortfolioWatcher
+          sudo -u azureuser bash -c '.venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e .'
+
+      - name: Run a quick smoke check (daily job, dry-run if supported)
+        run: |
+          set -e
+          sudo -u azureuser bash -c 'cd /opt/services/homelab/PortfolioWatcher && .venv/bin/python -c "import portfoliowatcher" && echo "import ok"'
+
+      - name: Show timer status
+        run: |
+          systemctl is-active portfoliowatcher-daily.timer portfoliowatcher-weekly.timer

@@ -1,0 +1,30 @@
+name: Deploy HomelabFrontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'HomelabFrontend/**'
+      - '.github/workflows/deploy-homelabfrontend.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, homelab-vm]
+    steps:
+      - name: Pull latest and reinstall
+        run: |
+          set -e
+          cd /opt/services/homelab
+          sudo -u azureuser git fetch origin main
+          sudo -u azureuser git reset --hard origin/main
+          cd HomelabFrontend
+          sudo -u azureuser bash -c '.venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e .'
+
+      - name: Restart dashboard service
+        run: |
+          set -e
+          sudo systemctl restart homelab-dashboard.service
+          sleep 3
+          systemctl is-active homelab-dashboard.service
+          curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/

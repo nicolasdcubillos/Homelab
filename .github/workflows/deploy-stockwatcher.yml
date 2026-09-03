@@ -1,0 +1,44 @@
+name: Deploy StockWatcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "StockWatcher/**"
+      - ".github/workflows/deploy-stockwatcher.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-stockwatcher
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, homelab-vm]
+    steps:
+      - name: Pull latest code
+        run: |
+          set -euo pipefail
+          cd /opt/services/homelab
+          git fetch origin main
+          git reset --hard origin/main
+
+      - name: Reinstall package
+        run: |
+          set -euo pipefail
+          cd /opt/services/homelab/StockWatcher
+          .venv/bin/pip install -q -U pip
+          .venv/bin/pip install -q -e '.[azure,browser]'
+
+      - name: Restart timer-triggered service
+        run: |
+          set -euo pipefail
+          # No-op if a run happens to be mid-flight; the timer will pick up
+          # the new code on its next trigger regardless. We don't restart
+          # the .timer itself, only re-run the oneshot service now so the
+          # deploy is verifiable immediately instead of waiting up to 1h.
+          sudo systemctl start stockwatcher-run.service
+
+      - name: Show last run summary
+        run: |
+          sudo journalctl -u stockwatcher-run.service --no-pager -n 20
