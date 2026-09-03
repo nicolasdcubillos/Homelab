@@ -127,7 +127,6 @@ class AzureOpenAIClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0.2,
         )
         return response.choices[0].message.content or ""
 

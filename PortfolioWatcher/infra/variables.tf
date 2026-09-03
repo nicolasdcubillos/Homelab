@@ -63,28 +63,40 @@ variable "openai_sku_name" {
   default     = "S0"
 }
 
-variable "openai_triage_model" {
-  description = "Model name backing the cheap 'triage' deployment (gpt-5-6-luna)."
+variable "openai_triage_deployment_name" {
+  description = "Azure OpenAI deployment name for the cheap 'triage' tier (Azure resource identifier, independent of the underlying model)."
   type        = string
-  default     = "gpt-5-6-luna"
+  default     = "portfoliowatcher-triage"
+}
+
+variable "openai_triage_model" {
+  description = "Model catalog name backing the cheap 'triage' deployment. Must have available quota in this region/subscription -- check with `az cognitiveservices usage list --location <region>`."
+  type        = string
+  default     = "gpt-4.1-mini"
 }
 
 variable "openai_triage_model_version" {
-  description = "Model version for the triage deployment."
+  description = "Model version for the triage deployment (must match `az cognitiveservices account list-models` for this account/region)."
   type        = string
-  default     = "1"
+  default     = "2025-04-14"
+}
+
+variable "openai_analysis_deployment_name" {
+  description = "Azure OpenAI deployment name for the capable 'analysis' tier (Azure resource identifier, independent of the underlying model)."
+  type        = string
+  default     = "portfoliowatcher-analysis"
 }
 
 variable "openai_analysis_model" {
-  description = "Model name backing the capable 'analysis' deployment (gpt-5-6-sol)."
+  description = "Model catalog name backing the capable 'analysis' deployment. Must have available quota in this region/subscription -- check with `az cognitiveservices usage list --location <region>`."
   type        = string
-  default     = "gpt-5-6-sol"
+  default     = "gpt-5-mini"
 }
 
 variable "openai_analysis_model_version" {
-  description = "Model version for the analysis deployment."
+  description = "Model version for the analysis deployment (must match `az cognitiveservices account list-models` for this account/region)."
   type        = string
-  default     = "1"
+  default     = "2025-08-07"
 }
 
 variable "openai_deployment_capacity" {

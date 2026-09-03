@@ -147,7 +147,7 @@ resource "azurerm_cognitive_account" "openai" {
 
 # Tier 1: cheap "triage" deployment, discards noise from raw news items.
 resource "azurerm_cognitive_deployment" "triage" {
-  name                 = "gpt-5-6-luna"
+  name                 = var.openai_triage_deployment_name
   cognitive_account_id = azurerm_cognitive_account.openai.id
 
   model {
@@ -157,7 +157,7 @@ resource "azurerm_cognitive_deployment" "triage" {
   }
 
   scale {
-    type     = "Standard"
+    type     = "GlobalStandard"
     capacity = var.openai_deployment_capacity
   }
 }
@@ -165,7 +165,7 @@ resource "azurerm_cognitive_deployment" "triage" {
 # Tier 2: capable "analysis" deployment, classifies risk/opportunity signals
 # and drafts the weekly portfolio report.
 resource "azurerm_cognitive_deployment" "analysis" {
-  name                 = "gpt-5-6-sol"
+  name                 = var.openai_analysis_deployment_name
   cognitive_account_id = azurerm_cognitive_account.openai.id
 
   model {
@@ -175,7 +175,7 @@ resource "azurerm_cognitive_deployment" "analysis" {
   }
 
   scale {
-    type     = "Standard"
+    type     = "GlobalStandard"
     capacity = var.openai_deployment_capacity
   }
 }

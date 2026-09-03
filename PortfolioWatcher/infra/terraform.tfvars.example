@@ -21,10 +21,10 @@ allowed_ssh_source_address = "203.0.113.10/32"
 vm_size = "Standard_B2s"
 
 openai_sku_name               = "S0"
-openai_triage_model           = "gpt-5-6-luna"
-openai_triage_model_version   = "1"
-openai_analysis_model         = "gpt-5-6-sol"
-openai_analysis_model_version = "1"
+openai_triage_model           = "gpt-4.1-mini"
+openai_triage_model_version   = "2025-04-14"
+openai_analysis_model         = "gpt-5-mini"
+openai_analysis_model_version = "2025-08-07"
 openai_deployment_capacity    = 10
 
 create_communication_service = true
