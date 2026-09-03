@@ -65,5 +65,3 @@ apps:
         args: ["discover"]
       - label: "Listar stores"
         args: ["stores"]
-      - label: "Probe"
-        args: ["probe"]

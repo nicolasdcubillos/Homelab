@@ -97,10 +97,11 @@ class JobManager:
             return self._locks[app_name]
 
     def is_running(self, app_name: str) -> bool:
-        proc = self._running_procs.get(app_name)
-        if proc is None:
-            return False
-        return proc.poll() is None
+        # Membership in `_running_procs` (not `proc.poll()`) is the source of
+        # truth: the watcher thread only pops the entry *after* it has
+        # persisted the final status to SQLite, so callers never observe a
+        # "not running" state while the DB row still says STATUS_RUNNING.
+        return app_name in self._running_procs
 
     def start_job(self, app: AppDefinition, command: Command) -> JobRecord:
         """Lanza `command` para `app` en segundo plano.
