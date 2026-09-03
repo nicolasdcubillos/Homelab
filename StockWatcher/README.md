@@ -335,3 +335,5 @@ notifier (email, Telegram), implement `send(alert) -> None`.
   schedule.
 - `--state-backend none` disables suppression entirely — useful when testing
   alert formatting, since every hit then looks new.
+
+<!-- CI/CD test: trivial change 2026-09-03T04:42:35Z -->
