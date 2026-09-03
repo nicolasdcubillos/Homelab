@@ -1,42 +1,71 @@
-name: One-off VM setup (venvs + systemd migration)
+name: One-off VM setup (systemd migration)
 on:
   workflow_dispatch: {}
 
 jobs:
-  setup:
+  migrate:
     runs-on: [self-hosted, homelab-vm]
     steps:
-      - name: Build StockWatcher venv
+      - name: Rewrite systemd units to new monorepo paths
         run: |
           set -e
-          cd /opt/services/homelab/StockWatcher
-          if [ ! -f .venv/bin/stockwatcher ]; then
-            python3.11 -m venv .venv
-            .venv/bin/pip install -q -U pip
-            .venv/bin/pip install -q -e '.[azure,browser]'
-          fi
-          .venv/bin/stockwatcher --help > /dev/null
-          echo "stockwatcher venv OK"
 
-      - name: Build PortfolioWatcher venv
-        run: |
-          set -e
-          cd /opt/services/homelab/PortfolioWatcher
-          if [ ! -f .venv/bin/portfoliowatcher ]; then
-            python3.11 -m venv .venv
-            .venv/bin/pip install -q -U pip
-            .venv/bin/pip install -q -e .
-          fi
-          .venv/bin/portfoliowatcher --help > /dev/null
-          echo "portfoliowatcher venv OK"
+          sudo tee /etc/systemd/system/stockwatcher-run.service > /dev/null <<'UNIT'
+          [Unit]
+          Description=StockWatcher hourly availability scan
+          After=network-online.target
 
-      - name: Build HomelabFrontend venv
+          [Service]
+          Type=oneshot
+          User=azureuser
+          WorkingDirectory=/opt/services/homelab/StockWatcher
+          EnvironmentFile=/opt/services/homelab/StockWatcher/.env
+          ExecStart=/opt/services/homelab/StockWatcher/.venv/bin/stockwatcher run
+          UNIT
+
+          sudo tee /etc/systemd/system/portfoliowatcher-daily.service > /dev/null <<'UNIT'
+          [Unit]
+          Description=PortfolioWatcher daily risk/opportunity subscription
+
+          [Service]
+          Type=oneshot
+          WorkingDirectory=/opt/services/homelab/PortfolioWatcher
+          EnvironmentFile=/opt/services/homelab/PortfolioWatcher/.env
+          ExecStart=/opt/services/homelab/PortfolioWatcher/.venv/bin/portfoliowatcher daily
+          UNIT
+
+          sudo tee /etc/systemd/system/portfoliowatcher-weekly.service > /dev/null <<'UNIT'
+          [Unit]
+          Description=PortfolioWatcher full portfolio analysis
+
+          [Service]
+          Type=oneshot
+          WorkingDirectory=/opt/services/homelab/PortfolioWatcher
+          EnvironmentFile=/opt/services/homelab/PortfolioWatcher/.env
+          ExecStart=/opt/services/homelab/PortfolioWatcher/.venv/bin/portfoliowatcher weekly
+          UNIT
+
+          sudo sed -i 's|/opt/services/homelab-dashboard|/opt/services/homelab/HomelabFrontend|g' /etc/systemd/system/homelab-dashboard.service
+          sudo sed -i 's|/opt/services/portfoliowatcher$|/opt/services/homelab/PortfolioWatcher|; s|/opt/services/portfoliowatcher/|/opt/services/homelab/PortfolioWatcher/|g' /opt/services/homelab/HomelabFrontend/apps.yaml
+          sudo sed -i 's|/opt/services/stockwatcher$|/opt/services/homelab/StockWatcher|; s|/opt/services/stockwatcher/|/opt/services/homelab/StockWatcher/|g' /opt/services/homelab/HomelabFrontend/apps.yaml
+
+          cat /etc/systemd/system/stockwatcher-run.service
+          echo "---"
+          cat /etc/systemd/system/homelab-dashboard.service
+          echo "---apps.yaml---"
+          cat /opt/services/homelab/HomelabFrontend/apps.yaml
+
+      - name: Reload and restart all services on the new paths
         run: |
           set -e
-          cd /opt/services/homelab/HomelabFrontend
-          if [ ! -f .venv/bin/pip ]; then
-            python3.11 -m venv .venv
-            .venv/bin/pip install -q -U pip
-            .venv/bin/pip install -q -e .
-          fi
-          .venv/bin/python -c "import homelab_dashboard" && echo "dashboard import OK"
+          sudo systemctl daemon-reload
+          sudo systemctl start stockwatcher-run.timer portfoliowatcher-daily.timer portfoliowatcher-weekly.timer
+          sudo systemctl start homelab-dashboard.service
+          sleep 3
+          systemctl is-active stockwatcher-run.timer portfoliowatcher-daily.timer portfoliowatcher-weekly.timer homelab-dashboard.service
+
+      - name: Remove old pre-monorepo directories
+        run: |
+          set -e
+          sudo rm -rf /opt/services/stockwatcher /opt/services/portfoliowatcher /opt/services/homelab-dashboard
+          ls -la /opt/services
