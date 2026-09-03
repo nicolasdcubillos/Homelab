@@ -1,15 +1,31 @@
-name: One-off VM setup (debug dashboard)
+name: One-off VM setup (kill port 8000 holder)
 on:
   workflow_dispatch: {}
 
 jobs:
-  debug:
+  fix:
     runs-on: [self-hosted, homelab-vm]
     steps:
-      - name: Dashboard status + logs
+      - name: Find and kill whatever holds port 8000
         run: |
-          systemctl status homelab-dashboard.service --no-pager -l || true
-          echo "---journal---"
-          journalctl -u homelab-dashboard.service -n 60 --no-pager || true
-          echo "---unit file---"
-          cat /etc/systemd/system/homelab-dashboard.service
+          echo "---lsof---"
+          sudo lsof -i :8000 || true
+          echo "---ss---"
+          sudo ss -ltnp | grep 8000 || true
+          echo "---ps grep dashboard---"
+          ps aux | grep -i dashboard | grep -v grep || true
+
+      - name: Stop service, kill any stray process on 8000, restart
+        run: |
+          sudo systemctl stop homelab-dashboard.service
+          sleep 2
+          PID=$(sudo lsof -t -i :8000 || true)
+          if [ -n "$PID" ]; then
+            echo "Killing stray PID(s): $PID"
+            sudo kill -9 $PID || true
+          fi
+          sleep 2
+          sudo systemctl start homelab-dashboard.service
+          sleep 3
+          systemctl is-active homelab-dashboard.service
+          curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
