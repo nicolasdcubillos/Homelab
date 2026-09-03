@@ -1,0 +1,34 @@
+# Copia este archivo a /etc/systemd/system/homelab-dashboard.service en la
+# VM (ajustando rutas si tu instalación no vive en /opt/services), luego:
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now homelab-dashboard.service
+#
+# El servicio escucha SOLO en 127.0.0.1:8000 -- Caddy es quien expone el
+# puerto público con TLS + Basic Auth (ver Caddyfile.example y
+# docs/deployment.md).
+
+[Unit]
+Description=Homelab Dashboard (panel de control web)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/services/homelab-dashboard
+Environment=DASHBOARD_HOST=127.0.0.1
+Environment=DASHBOARD_PORT=8000
+Environment=DASHBOARD_APPS_FILE=/opt/services/homelab-dashboard/apps.yaml
+Environment=DASHBOARD_DB_FILE=/opt/services/homelab-dashboard/dashboard.db
+Environment=DASHBOARD_LOGS_DIR=/opt/services/homelab-dashboard/logs
+ExecStart=/opt/services/homelab-dashboard/.venv/bin/homelab-dashboard
+Restart=on-failure
+RestartSec=5
+# NOTA: en el despliegue de referencia esto corre como root porque el propio
+# dashboard necesita permisos para leer/escribir configs y lanzar subprocess
+# bajo /opt/services/<otra-app>/, y esas carpetas son propiedad de root. Si
+# prefieres más aislamiento, crea un usuario dedicado (ej. "dashboard") con
+# permisos de escritura solo sobre los directorios que administra.
+User=root
+
+[Install]
+WantedBy=multi-user.target

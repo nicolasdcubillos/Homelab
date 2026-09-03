@@ -1,0 +1,67 @@
+# apps.yaml.example
+#
+# Copia este archivo a `apps.yaml` (fuera de git, gitignoreado) y colócalo en
+# la raíz del proyecto del dashboard en la VM (o en la ruta que le indiques al
+# CLI vía la variable de entorno DASHBOARD_APPS_FILE). El dashboard lo lee al
+# arrancar (y en cada request de la página principal) para saber qué apps
+# administrar, dónde viven, y qué comandos/config_files exponer.
+#
+# Campos por app:
+#   name          : identificador corto único (usado en URLs), ej. "portfoliowatcher"
+#   display_name  : nombre bonito mostrado en la UI
+#   path          : ruta base del proyecto en el filesystem de la VM
+#   venv_bin      : ruta al directorio bin/ del venv de esa app (contiene el entrypoint)
+#   entrypoint    : nombre del ejecutable dentro de venv_bin (ej. "portfoliowatcher")
+#   config_files  : lista de { label, path (relativo a `path`), type: yaml }
+#   commands      : lista de { label, args: [...] } - args se pasan tal cual al entrypoint
+#
+# Si `path` no existe en disco cuando el dashboard arranca/renderiza, la app se
+# muestra como "no instalado" sin romper el resto de la página.
+
+apps:
+  - name: portfoliowatcher
+    display_name: "PortfolioWatcher"
+    path: /opt/services/portfoliowatcher
+    venv_bin: /opt/services/portfoliowatcher/.venv/bin
+    entrypoint: portfoliowatcher
+    config_files:
+      - label: "Configuración del portafolio"
+        path: config/portfolio.yaml
+        type: yaml
+    commands:
+      - label: "Diario (real)"
+        args: ["daily"]
+      - label: "Diario (dry-run)"
+        args: ["--dry-run", "daily"]
+      - label: "Semanal (real)"
+        args: ["weekly"]
+      - label: "Semanal (dry-run)"
+        args: ["--dry-run", "weekly"]
+      - label: "Semanal forzado (dry-run)"
+        args: ["--dry-run", "weekly", "--force"]
+      - label: "Analizar (real)"
+        args: ["analyze"]
+      - label: "Analizar (dry-run)"
+        args: ["--dry-run", "analyze"]
+
+  - name: stockwatcher
+    display_name: "StockWatcher"
+    path: /opt/services/stockwatcher
+    venv_bin: /opt/services/stockwatcher/.venv/bin
+    entrypoint: stockwatcher
+    config_files:
+      - label: "Watches"
+        path: config/watches.yaml
+        type: yaml
+      - label: "Stores"
+        path: config/stores.yaml
+        type: yaml
+    commands:
+      - label: "Run (con discovery)"
+        args: ["run", "--discover"]
+      - label: "Run (sin discovery)"
+        args: ["run", "--no-discovery"]
+      - label: "Discover"
+        args: ["discover"]
+      - label: "Listar stores"
+        args: ["stores"]
