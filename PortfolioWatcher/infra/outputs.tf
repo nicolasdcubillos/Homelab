@@ -3,6 +3,11 @@ output "vm_public_ip" {
   value       = azurerm_public_ip.this.ip_address
 }
 
+output "vm_fqdn" {
+  description = "Azure-issued DNS name for the VM's public IP (used by Caddy for automatic HTTPS on the dashboard, since it's a real public domain unlike wildcard services such as nip.io)."
+  value       = azurerm_public_ip.this.fqdn
+}
+
 output "vm_name" {
   description = "Name of the VM."
   value       = azurerm_linux_virtual_machine.this.name

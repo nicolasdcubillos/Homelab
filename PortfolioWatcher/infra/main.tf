@@ -71,6 +71,22 @@ resource "azurerm_network_security_group" "this" {
     source_address_prefix      = var.allowed_ssh_source_address
     destination_address_prefix = "*"
   }
+
+  # HTTP/HTTPS for the reverse proxy (Caddy) fronting the homelab dashboard.
+  # Open to the whole internet by design (accessed from a phone on any
+  # network) -- Caddy terminates TLS and enforces HTTP Basic Auth, and only
+  # the dashboard is proxied (nothing else listens on 80/443).
+  security_rule {
+    name                       = "AllowWebDashboard"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_ranges    = ["80", "443"]
+    source_address_prefix      = var.allowed_web_source_address
+    destination_address_prefix = "*"
+  }
 }
 
 resource "azurerm_public_ip" "this" {
@@ -79,6 +95,7 @@ resource "azurerm_public_ip" "this" {
   resource_group_name = azurerm_resource_group.this.name
   allocation_method   = "Static"
   sku                 = "Standard"
+  domain_name_label   = "${var.project_name}-${local.suffix}"
   tags                = var.tags
 }
 

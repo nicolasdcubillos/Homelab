@@ -117,9 +117,13 @@ subdirectorio: `/opt/services/portfoliowatcher/`.
    terraform plan
    terraform apply
    ```
-   Esto crea: resource group, VM Ubuntu B2s + disco + IP pública + NSG
-   (SSH restringido a tu IP), una cuenta de Azure OpenAI con los 2
-   deployments (Luna y Sol), y un recurso de Communication Services con canal
+   Esto crea: resource group, VM Ubuntu B2s + disco + IP pública (con DNS
+   label gratuito `*.cloudapp.azure.com`, ver output `vm_fqdn`) + NSG
+   (puerto 22 restringido a tu IP; puertos 80/443 abiertos para el reverse
+   proxy del dashboard compartido, ver más abajo), una cuenta de Azure
+   OpenAI con los 2 deployments (triaje/análisis — en este despliegue
+   `gpt-4.1-mini`/`gpt-5-mini` por límites de cupo, ver
+   `docs/architecture.md`), y un recurso de Communication Services con canal
    WhatsApp (la conexión con Meta/WhatsApp Manager requiere un paso manual
    fuera de Terraform — ver `docs/architecture.md`).
 4. Copia el código y arranca los timers:
@@ -130,6 +134,12 @@ subdirectorio: `/opt/services/portfoliowatcher/`.
 5. Los timers `portfoliowatcher-daily.timer` (2x/día) y
    `portfoliowatcher-weekly.timer` (cada N días) quedan activos vía
    `systemd`; revisa logs con `journalctl -u portfoliowatcher-daily.service`.
+6. (Opcional pero recomendado) Despliega
+   [HomelabDashboard](https://github.com/nicolasdcubillos/HomelabDashboard)
+   en la misma VM para poder editar `config/portfolio.yaml` y disparar
+   `daily`/`weekly`/`analyze` manualmente desde el celular, sin SSH — es el
+   consumidor de las reglas NSG 80/443 y del `vm_fqdn` mencionados arriba.
+   Ver `docs/deployment.md` en ese repo para el runbook completo.
 
 **Este entorno de desarrollo no tiene credenciales de Azure configuradas** —
 `terraform apply` debe correrlo el usuario manualmente después de `az login`.

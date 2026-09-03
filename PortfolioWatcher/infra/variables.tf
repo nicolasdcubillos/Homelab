@@ -45,6 +45,17 @@ variable "allowed_ssh_source_address" {
   type        = string
 }
 
+variable "allowed_web_source_address" {
+  description = <<-EOT
+    Source address prefix allowed to reach ports 80/443 on the NSG (the
+    homelab dashboard's reverse proxy). Defaults to "*" since the dashboard
+    is meant to be reachable from a phone on any network; it is protected by
+    TLS + HTTP Basic Auth at the Caddy layer instead of by source IP.
+  EOT
+  type        = string
+  default     = "*"
+}
+
 variable "vm_size" {
   description = "VM size. B2s is the default requested: 2 vCPU / 4 GiB RAM, burstable, cheap."
   type        = string
