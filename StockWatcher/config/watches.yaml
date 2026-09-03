@@ -19,7 +19,7 @@
 defaults:
   currency: USD
   countries: [US]
-  notify: [whatsapp]
+  notify: [email]
   gender: mens
   exclude:
     - wmns

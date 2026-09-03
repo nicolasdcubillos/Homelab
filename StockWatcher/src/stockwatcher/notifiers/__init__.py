@@ -18,10 +18,12 @@ from .base import (
     summarize,
 )
 from .console import ConsoleNotifier
+from .email import EmailNotifier
 from .whatsapp import WhatsAppNotifier
 
 __all__ = [
     "ConsoleNotifier",
+    "EmailNotifier",
     "Notifier",
     "NotifierError",
     "WhatsAppNotifier",
