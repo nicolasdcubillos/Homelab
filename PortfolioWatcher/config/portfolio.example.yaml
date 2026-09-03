@@ -1,0 +1,50 @@
+# PortfolioWatcher — configuración del portafolio.
+#
+# PLANTILLA DE EJEMPLO — copia este archivo a config/portfolio.yaml (gitignorado)
+# y reemplaza los holdings de ejemplo con tus posiciones reales.
+#
+# Holdings netos (BUY - SELL) calculados desde el historial de transacciones
+# real exportado de Yahoo Finance. Cantidad y costo promedio son los que
+# importan para el análisis de concentración/riesgo; ajusta aquí cada vez que
+# hagas una operación nueva.
+#
+# Para actualizar posiciones:
+#   1. Exporta tu historial de transacciones desde Yahoo Finance (o tu broker).
+#   2. Recalcula la cantidad neta (compras - ventas) y el costo promedio
+#      ponderado por cada ticker.
+#   3. Reemplaza/edita las entradas bajo `holdings` abajo.
+#   4. Tickers con cantidad neta ~0 (posiciones cerradas) NO deben incluirse
+#      como holdings activos — muévelos a `closed_positions` como referencia
+#      histórica si quieres conservarlas.
+
+analysis_interval_days: 7 # cada cuánto corre el análisis completo de portafolio
+
+risk_profile:
+  # Usado como contexto para el LLM al redactar tesis y severidades; no
+  # cambia el cálculo numérico de concentración.
+  horizon: long_term
+  tolerance: moderate # conservative | moderate | aggressive
+  notes: >
+    Inversión a largo plazo, buy-and-hold con revisión periódica. No trading
+    activo ni especulación de corto plazo.
+
+holdings:
+  - ticker: AAPL
+    quantity: 10.0
+    avg_cost: 180.00
+    sector_hint: technology
+  - ticker: VOO
+    quantity: 5.0
+    avg_cost: 400.00
+    sector_hint: broad_market_etf
+  - ticker: MSFT
+    quantity: 3.0
+    avg_cost: 300.00
+    sector_hint: technology
+
+# Posiciones ya cerradas (cantidad neta ~0). Se conservan solo como
+# referencia histórica y NO generan señales de riesgo/oportunidad como
+# holdings activos — el loader las ignora para el análisis.
+closed_positions:
+  - ticker: EXAMPLE
+    note: "posición cerrada, cantidad neta ~0 (ejemplo)"
