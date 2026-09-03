@@ -69,6 +69,7 @@ stockwatcher probe kith.com "mind 002"     # debug one store's search + variants
 stockwatcher discover                      # force a discovery pass now
 stockwatcher run --watch "Nike Mind 002"   # limit to one watch
 stockwatcher run --store kith.com          # limit to one store
+stockwatcher --notify-to me@example.com run  # override the alert destination
 stockwatcher -v run --dry-run              # per-request logging
 ```
 
@@ -92,7 +93,7 @@ watches:
     max_price: 160
     currency: USD
     countries: [US]
-    notify: [whatsapp]
+    notify: [whatsapp]                      # or `email:me@example.com`
 ```
 
 `defaults:` at the top of the file applies to every watch.
@@ -117,6 +118,32 @@ watches:
 ```
 
 Test it before trusting it: `stockwatcher probe newstore.com "mind 002"`.
+
+---
+
+## Where alerts are delivered
+
+A destination is resolved per channel, **highest precedence first**:
+
+| # | Source | Example |
+|---|--------|---------|
+| 1 | `--notify-to` | `stockwatcher --notify-to me@example.com run` |
+| 2 | process environment | `EMAIL_TO=me@example.com stockwatcher run` |
+| 3 | the watch's `notify` entry | `notify: ["email:me@example.com"]` |
+| 4 | `notify_options.to` | `notify_options: {to: {email: me@example.com}}` |
+
+`--notify-to` is repeatable and infers the channel from the shape of the value
+— an address goes to email, anything else to WhatsApp. Write `email:...` or
+`whatsapp:...` to say it explicitly.
+
+**This order is a security contract when several people share one checkout.**
+Each of them runs the same code and the same `.env`, so the only thing keeping
+their alerts apart is that a destination injected into the process environment
+outranks the shared file — `load_dotenv` is called with the default
+`override=False`, and **must stay that way**
+(see `stockwatcher/notifiers/base.py:resolve_destinations`). `--notify-to`
+exists so a caller never has to depend on that subtlety: pass the destination
+per invocation and nothing global can redirect it.
 
 ---
 
@@ -197,6 +224,27 @@ fully exception-guarded, so it can never block or slow a scan.
 
 This is what generalizes the system: point it at a new category and it finds
 that category's retailers itself.
+
+### Sharing discoveries between users
+
+Step 3 writes to the state store by default, which is right for one user. When
+several people run this checkout with their own `--state-path`, that means each
+of them re-runs the same searches and re-probes the same hosts to rediscover
+what somebody else already found — wasted search quota, wasted requests.
+
+Point them at one **shared, append-only** registry instead:
+
+```bash
+stockwatcher --state-path ~/alice/state.db \
+             --discovery-registry /srv/stockwatcher/discovered.yaml run
+```
+
+(or `STOCKWATCHER_DISCOVERY_REGISTRY`, or `discovery.registry_path` in the
+YAML). Promotions land in that file — same shape as `config/stores.yaml`, so
+it is also read back as a store list — and every user counts its hosts as
+already known. Entries are appended under an exclusive lock and never
+rewritten, so concurrent runs are safe and one user's auto-retire (which stays
+in their own state) does not retire a store for everybody.
 
 ---
 
@@ -294,15 +342,15 @@ job. Locally those stores stay disabled until you run
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q      # 206 tests, no network
+.venv/bin/python -m pytest -q      # 250 tests, no network
 .venv/bin/ruff check src tests
 .venv/bin/ruff format src tests
 ```
 
 Tests cover the pure logic — size/variant normalization, colour matching,
 per-variant price filtering, state transitions, provider parsing, notification
-batching, discovery promotion, and store-failure isolation. **All HTTP is mocked
-with `respx`; no test touches the network.**
+batching and destination precedence, discovery promotion, and store-failure
+isolation. **All HTTP is mocked with `respx`; no test touches the network.**
 
 Layout:
 
@@ -315,9 +363,9 @@ src/stockwatcher/
   http.py        async client, global rate limiter, retries
   runner.py      orchestration, concurrency, run summary
   providers/     shopify, footlocker, nike, playwright
-  notifiers/     whatsapp, console
+  notifiers/     whatsapp, email, console + destination precedence
   state/         sqlite, azure_table
-  discovery/     candidate harvesting + Shopify probing
+  discovery/     candidate harvesting, Shopify probing, shared store registry
 ```
 
 To add a provider, implement `search(query) -> list[ProductRef]` and
@@ -335,5 +383,3 @@ notifier (email, Telegram), implement `send(alert) -> None`.
   schedule.
 - `--state-backend none` disables suppression entirely — useful when testing
   alert formatting, since every hit then looks new.
-
-<!-- CI/CD test: trivial change 2026-09-03T04:42:35Z -->

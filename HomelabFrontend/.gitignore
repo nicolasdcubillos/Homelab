@@ -12,6 +12,18 @@ dashboard.db-journal
 dashboard.db-wal
 dashboard.db-shm
 
+# Datos por usuario: base multiusuario, workspaces generados y estado de cada
+# watcher. Todo esto se genera en tiempo de ejecución; nada se versiona.
+data/
+
+# Frontend: dependencias y build. El build se genera con `npm run build` (ver
+# docs/deployment.md); no se versiona el artefacto ni node_modules.
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/*.tsbuildinfo
+
 # Entornos virtuales.
 .venv/
 venv/

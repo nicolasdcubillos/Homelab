@@ -13,7 +13,8 @@ inside the 24h window opened by an inbound message from the user.
 Environment:
     ``ACS_CONNECTION_STRING``       ACS resource connection string
     ``ACS_CHANNEL_REGISTRATION_ID`` WhatsApp channel GUID
-    ``WHATSAPP_TO``                 destination in E.164 (e.g. ``+573001234567``)
+    ``WHATSAPP_TO``                 destination in E.164 (e.g. ``+573001234567``);
+                                    overridden by ``--notify-to``
     ``WHATSAPP_TEMPLATE_NAME``      approved template name
     ``WHATSAPP_TEMPLATE_LANG``      template language (default ``es``)
     ``WHATSAPP_MODE``               ``template`` (default) or ``text``
@@ -30,6 +31,7 @@ from .base import (
     Notifier,
     NotifierError,
     batch_groups,
+    env_list,
     group_hits,
     register_notifier,
     render_text,
@@ -41,11 +43,6 @@ log = logging.getLogger(__name__)
 #: Order matters: it must line up with the template's body placeholders.
 TEMPLATE_PARAMS = ("product", "variant", "price", "store")
 BUTTON_PARAM = "url_suffix"
-
-
-def _env_list(name: str) -> list[str]:
-    raw = os.getenv(name, "")
-    return [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
 
 
 class WhatsAppNotifier(Notifier):
@@ -61,7 +58,13 @@ class WhatsAppNotifier(Notifier):
         self.channel_id = options.get("channel_registration_id") or os.getenv(
             "ACS_CHANNEL_REGISTRATION_ID"
         )
-        self.recipients: list[str] = options.get("to") or _env_list("WHATSAPP_TO")
+        # ``options["to"]`` is the destination the caller resolved with
+        # :func:`stockwatcher.notifiers.base.resolve_destinations` (``--notify-to``
+        # first, then the process environment, then the YAML).  Reading
+        # ``WHATSAPP_TO`` here is only the fallback for a notifier built
+        # directly, and *must* stay lower priority: see that function for why
+        # ``load_dotenv(override=True)`` would cross users' alerts.
+        self.recipients: list[str] = options.get("to") or env_list("WHATSAPP_TO")
         self.template_name = options.get("template_name") or os.getenv(
             "WHATSAPP_TEMPLATE_NAME", "stockwatcher_restock"
         )
@@ -193,4 +196,8 @@ def _url_suffix(url: str) -> str:
     return url.split("://", 1)[-1]
 
 
-register_notifier("whatsapp", lambda options: WhatsAppNotifier(options))
+register_notifier(
+    "whatsapp",
+    lambda options: WhatsAppNotifier(options),
+    destination_env="WHATSAPP_TO",
+)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Sequence
 from decimal import Decimal
@@ -35,13 +36,73 @@ NotifierFactory = Callable[[dict], Notifier]
 
 _REGISTRY: dict[str, NotifierFactory] = {}
 
+#: Channel -> the environment variable that carries its destination.
+_DESTINATION_ENV: dict[str, str] = {}
 
-def register_notifier(name: str, factory: NotifierFactory) -> None:
-    _REGISTRY[name.lower()] = factory
+
+def register_notifier(
+    name: str,
+    factory: NotifierFactory,
+    *,
+    destination_env: str | None = None,
+) -> None:
+    """Register a channel, optionally naming the env var that addresses it.
+
+    ``destination_env`` is what makes :func:`resolve_destinations` able to
+    apply one precedence rule to every channel instead of hard-coding
+    ``WHATSAPP_TO`` / ``EMAIL_TO`` at the call site.
+    """
+    key = name.lower()
+    _REGISTRY[key] = factory
+    if destination_env:
+        _DESTINATION_ENV[key] = destination_env
 
 
 def available_notifiers() -> list[str]:
     return sorted(_REGISTRY)
+
+
+def destination_env(channel: str) -> str | None:
+    """Name of the env var holding ``channel``'s destination, if it has one."""
+    return _DESTINATION_ENV.get(channel.lower())
+
+
+def env_list(name: str) -> list[str]:
+    """Read a comma/semicolon separated env var into a list."""
+    raw = os.getenv(name, "")
+    return [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
+
+
+def resolve_destinations(
+    channel: str,
+    *,
+    override: Sequence[str] | None = None,
+    configured: Sequence[str] | None = None,
+) -> list[str]:
+    """Decide where ``channel`` delivers, highest precedence first:
+
+    1. ``override`` — the ``--notify-to`` flag, supplied per invocation.
+    2. the process environment (``WHATSAPP_TO`` / ``EMAIL_TO``).
+    3. ``configured`` — the YAML destination (``watches[].notify`` entry, or
+       ``notify_options.to``).
+
+    **This order is a security contract, not a preference.**  StockWatcher is
+    invoked once per user by an external scheduler, and every user shares one
+    checkout — so one ``.env``.  Layer 2 only keeps users apart because
+    ``dotenv.load_dotenv`` defaults to ``override=False``: a destination
+    already present in the process environment beats the shared file.  Calling
+    ``load_dotenv(override=True)`` anywhere (see :func:`stockwatcher.cli.main`)
+    would silently redirect *every* user's alerts to whatever address the
+    shared ``.env`` happens to carry.  Layer 1 exists so a caller never has to
+    rely on that subtlety at all: an explicit flag beats both.
+    """
+    if override:
+        return list(override)
+    var = _DESTINATION_ENV.get(channel.lower())
+    from_env = env_list(var) if var else []
+    if from_env:
+        return from_env
+    return list(configured or [])
 
 
 def build_notifier(name: str, options: dict | None = None) -> Notifier:
@@ -140,8 +201,11 @@ __all__ = [
     "batch_groups",
     "build_notifier",
     "cheapest_price",
+    "destination_env",
+    "env_list",
     "group_hits",
     "register_notifier",
     "render_text",
+    "resolve_destinations",
     "summarize",
 ]

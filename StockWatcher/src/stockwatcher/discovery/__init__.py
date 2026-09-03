@@ -7,9 +7,14 @@ Every N runs (default 3):
   1. Web-search each watch's ``match`` terms to harvest candidate domains.
   2. Probe each candidate for ``/search/suggest.json``.  If it answers with
      valid Shopify JSON **and** contains a product matching the watch, promote
-     it into the persisted store registry with ``first_seen`` / ``last_ok`` /
+     it into the store registry with ``first_seen`` / ``last_ok`` /
      ``fail_count``.
   3. Stores that keep failing are auto-retired by the runner.
+
+Where step 2 writes is pluggable — see :mod:`stockwatcher.discovery.registry`.
+It defaults to the run's state store, but with several users each owning their
+own state a shared append-only registry is what stops every user from paying
+for the same discovery again.
 
 Discovery runs after notifications and is fully exception-guarded, so it can
 never block or slow the availability pass.
@@ -28,6 +33,12 @@ from ..matching import text_excluded, text_matches
 from ..models import Store, StoreRecord
 from ..providers.shopify import ShopifyProvider, looks_like_shopify
 from ..state import StateStore
+from .registry import (
+    StateStoreRegistry,
+    StoreRegistry,
+    YamlStoreRegistry,
+    build_store_registry,
+)
 from .search import SearchBackend, build_search_backend, host_of
 
 log = logging.getLogger(__name__)
@@ -143,14 +154,24 @@ async def discover_stores(
     config: DiscoveryConfig,
     state: StateStore,
     backend: SearchBackend | None = None,
+    registry: StoreRegistry | None = None,
 ) -> list[StoreRecord]:
-    """Harvest, probe and promote new Shopify stores.  Best-effort throughout."""
+    """Harvest, probe and promote new Shopify stores.  Best-effort throughout.
+
+    ``registry`` is where promotions land; it defaults to the one
+    ``config.registry_path`` asks for (the state store when unset).  Whatever
+    it already holds is added to ``known_hosts``, which is the point of a
+    shared registry: a host somebody else already promoted is never probed
+    again.
+    """
     search = backend or build_search_backend(http, config.backend)
     if not search.enabled:
         return []
+    if registry is None:
+        registry = build_store_registry(config, state)
 
     promoted: list[StoreRecord] = []
-    known = set(known_hosts)
+    known = set(known_hosts) | await registry.known_hosts()
 
     for watch in watches:
         if len(promoted) >= config.max_promotions_per_run:
@@ -183,7 +204,7 @@ async def discover_stores(
                 source="discovery",
                 note=f"discovered via watch {watch.name!r}",
             )
-            await state.upsert_store(record)
+            await registry.add(record)
             promoted.append(record)
             known.add(host)
             log.info("promoted store %s (watch %s)", host, watch.name)
@@ -216,6 +237,10 @@ def _guess_country(host: str) -> str:
 
 __all__ = [
     "BLOCKED_HOST_SUFFIXES",
+    "StateStoreRegistry",
+    "StoreRegistry",
+    "YamlStoreRegistry",
+    "build_store_registry",
     "candidate_hosts",
     "discover_stores",
     "discovery_queries",

@@ -19,12 +19,22 @@ jobs:
           sudo -u azureuser git fetch origin main
           sudo -u azureuser git reset --hard origin/main
           cd PortfolioWatcher
-          sudo -u azureuser bash -c '.venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e .'
+          # Con el extra [azure], no a secas: el cliente de Azure OpenAI, el
+          # notificador de WhatsApp y el de correo importan sus SDK de forma
+          # perezosa, así que sin el extra el paquete instala e importa bien
+          # pero el job diario muere en tiempo de ejecución con
+          # "openai is required for the Azure OpenAI client". Es justo lo que
+          # llevaba pasando en la VM: `systemctl status portfoliowatcher-daily`
+          # mostraba ese RuntimeError en cada disparo del timer.
+          sudo -u azureuser bash -c '.venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e ".[azure]"'
 
-      - name: Run a quick smoke check (daily job, dry-run if supported)
+      # Importar el paquete no probaba nada útil: el fallo que teníamos en
+      # producción ocurría al construir los clientes, no al importar. Ahora se
+      # comprueba que las dependencias opcionales estén realmente disponibles.
+      - name: Run a quick smoke check
         run: |
           set -e
-          sudo -u azureuser bash -c 'cd /opt/services/homelab/PortfolioWatcher && .venv/bin/python -c "import portfoliowatcher" && echo "import ok"'
+          sudo -u azureuser bash -c 'cd /opt/services/homelab/PortfolioWatcher && .venv/bin/python -c "import portfoliowatcher, openai; from azure.communication.messages import NotificationMessagesClient; from azure.communication.email import EmailClient; print(\"import ok: paquete + openai + whatsapp + correo\")"'
 
       - name: Show timer status
         run: |

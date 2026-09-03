@@ -19,20 +19,34 @@ import time
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 
-from .config import Config, Watch
+from .config import Config, NotifyTarget, Watch
 from .http import HttpClient, RateLimited
 from .matching import build_observations, store_allowed, text_matches
 from .models import Alert, Hit, Product, ProductRef, RunSummary, Store, StoreRecord
-from .notifiers import Notifier, build_notifier
+from .notifiers import Notifier, build_notifier, resolve_destinations
 from .providers import ProviderError, build_provider
 from .state import StateStore, detect_transitions
 
 log = logging.getLogger(__name__)
 
+#: What a watch notifies when it says nothing.
+DEFAULT_NOTIFY = (NotifyTarget("whatsapp"),)
+
 
 def merge_stores(config_stores: Sequence[Store], records: Iterable[StoreRecord]) -> list[Store]:
     """Config stores win on provider/country; the registry contributes discoveries."""
-    merged: dict[str, Store] = {s.host: s for s in config_stores}
+    records = list(records)
+    by_host = {r.host: r for r in records}
+    merged: dict[str, Store] = {}
+    for store in config_stores:
+        record = by_host.get(store.host)
+        # A discovered store reaches the config list through the shared registry
+        # (which is append-only, so it never retires anything).  Auto-retire is
+        # per user and lives in their state, so honour it here or a store that
+        # failed `retire_after_failures` times would be scanned forever.
+        if store.source == "discovery" and record is not None and not record.enabled:
+            continue
+        merged[store.host] = store
     for record in records:
         if record.host in merged:
             continue
@@ -89,27 +103,44 @@ class Runner:
         http: HttpClient,
         *,
         dry_run: bool = False,
-        notifier_overrides: dict[str, Notifier] | None = None,
+        notifier_overrides: dict[tuple[str, tuple[str, ...]], Notifier] | None = None,
     ) -> None:
         self.config = config
         self.state = state
         self.http = http
         self.dry_run = dry_run
-        self._notifiers: dict[str, Notifier] = dict(notifier_overrides or {})
+        self._notifiers: dict[tuple[str, tuple[str, ...]], Notifier] = dict(
+            notifier_overrides or {}
+        )
         self.summary = RunSummary()
 
     # ------------------------------------------------------------- notifiers
 
-    def _notifier(self, channel: str) -> Notifier:
-        key = "console" if self.dry_run else channel.lower()
-        if key not in self._notifiers:
-            self._notifiers[key] = build_notifier(
-                key,
-                {
-                    "max_hits_per_message": self.config.notify.max_hits_per_message,
-                    "max_messages_per_run": self.config.notify.max_messages_per_run,
-                },
+    def _notifier(self, target: NotifyTarget) -> Notifier:
+        """Build (once) the notifier that serves ``target``.
+
+        Notifiers are cached per *(channel, destination)*: two watches sending
+        to the same address share one client and one message budget, while two
+        watches pointed at different addresses stay separate.
+        """
+        if self.dry_run:
+            channel, destinations = "console", []
+        else:
+            channel = target.channel.lower()
+            destinations = resolve_destinations(
+                channel,
+                override=self.config.notify.override_to.get(channel),
+                configured=list(target.to) or self.config.notify.to.get(channel),
             )
+        key = (channel, tuple(destinations))
+        if key not in self._notifiers:
+            options = {
+                "max_hits_per_message": self.config.notify.max_hits_per_message,
+                "max_messages_per_run": self.config.notify.max_messages_per_run,
+            }
+            if destinations:
+                options["to"] = list(destinations)
+            self._notifiers[key] = build_notifier(channel, options)
         return self._notifiers[key]
 
     async def aclose(self) -> None:
@@ -248,26 +279,26 @@ class Runner:
     # -------------------------------------------------------------- notifying
 
     async def _notify(self, hits: Sequence[Hit], watches: Sequence[Watch]) -> None:
-        channels_by_watch = {w.name: w.notify for w in watches}
-        per_channel: dict[str, list[Hit]] = {}
+        targets_by_watch = {w.name: w.notify for w in watches}
+        per_target: dict[NotifyTarget, list[Hit]] = {}
         for hit in hits:
-            for channel in channels_by_watch.get(hit.watch_name, ["whatsapp"]):
-                bucket = per_channel.setdefault(channel, [])
+            for target in targets_by_watch.get(hit.watch_name, DEFAULT_NOTIFY):
+                bucket = per_target.setdefault(target, [])
                 # Two watches can match the same listing (e.g. "mind 002" and
                 # "mind 002 flyknit").  Send one message, not two identical ones.
                 if any(_same_listing(hit, seen) for seen in bucket):
                     continue
                 bucket.append(hit)
 
-        for channel, channel_hits in per_channel.items():
+        for target, target_hits in per_target.items():
             try:
-                notifier = self._notifier(channel)
+                notifier = self._notifier(target)
                 before = getattr(notifier, "messages_sent", 0)
-                await notifier.send(Alert(tuple(channel_hits)))
-                self.summary.hits_notified += len(channel_hits)
+                await notifier.send(Alert(tuple(target_hits)))
+                self.summary.hits_notified += len(target_hits)
                 self.summary.messages_sent += getattr(notifier, "messages_sent", 0) - before
             except Exception as exc:
-                message = f"notifier {channel}: {exc}"
+                message = f"notifier {target.channel}: {exc}"
                 self.summary.errors.append(message)
                 log.error("notification failed: %s", message)
 

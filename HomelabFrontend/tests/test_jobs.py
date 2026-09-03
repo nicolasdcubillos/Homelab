@@ -11,7 +11,17 @@ def _get_fake_app(apps_yaml_file):
     return next(a for a in apps if a.name == "fakeapp")
 
 
-def _wait_until_finished(jm: JobManager, app_name: str, timeout: float = 5.0) -> None:
+def _wait_until_finished(jm: JobManager, app_name: str, timeout: float = 30.0) -> None:
+    # 30s, no 5s: este test arranca subprocesos reales de Python (uno o dos a
+    # la vez) que compiten por CPU con lo que sea que esté corriendo en la
+    # máquina. Bajo carga, el arranque del intérprete más el `--slow` (que
+    # duerme 1.5s) más el polling de este bucle pueden comerse un margen de
+    # 5s sin que el job esté realmente colgado. Subir el timeout NO ralentiza
+    # la suite: el bucle retorna en cuanto `is_running` es falso, así que en
+    # el camino feliz el tiempo es idéntico; el timeout solo decide cuánto se
+    # espera antes de declarar el fallo. Es margen gratis contra runners
+    # lentos y compartidos (ver CI en .github/workflows/ci.yml), no latencia
+    # añadida.
     deadline = time.time() + timeout
     while time.time() < deadline:
         if not jm.is_running(app_name):
@@ -75,7 +85,7 @@ def test_cannot_run_two_jobs_concurrently_for_same_app(tmp_path, apps_yaml_file)
         raised = True
     assert raised is True
 
-    _wait_until_finished(jm, app.name, timeout=5.0)
+    _wait_until_finished(jm, app.name, timeout=30.0)
 
 
 def test_different_apps_can_run_in_parallel(tmp_path, apps_yaml_file, fake_app_dir):

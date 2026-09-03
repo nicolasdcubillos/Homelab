@@ -12,9 +12,12 @@ from .base import (
     available_notifiers,
     batch_groups,
     build_notifier,
+    destination_env,
+    env_list,
     group_hits,
     register_notifier,
     render_text,
+    resolve_destinations,
     summarize,
 )
 from .console import ConsoleNotifier
@@ -30,8 +33,11 @@ __all__ = [
     "available_notifiers",
     "batch_groups",
     "build_notifier",
+    "destination_env",
+    "env_list",
     "group_hits",
     "register_notifier",
     "render_text",
+    "resolve_destinations",
     "summarize",
 ]

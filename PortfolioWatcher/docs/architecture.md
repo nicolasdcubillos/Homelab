@@ -38,13 +38,13 @@ prices.py     news_ingestion.py   state.py (SQLite)   prices.py + state.py
    └─────────────────┴──────────────────┬──────────────────────────┘
                                          ▼
                               notifier.py (Notifier ABC)
-                          ┌──────────────┴───────────────┐
-                          ▼                               ▼
-                 WhatsAppNotifier (ACS)           TelegramNotifier (stub)
-                          │
-                          ▼
-                 Usuario recibe el mensaje
-             (nunca se ejecuta ninguna orden)
+               ┌─────────────────────┬───────────────────┐
+               ▼                     ▼                   ▼
+     WhatsAppNotifier (ACS)  EmailNotifier (ACS)   TelegramNotifier
+               └─────────────────────┴───────────────────┘
+                                     ▼
+                         Usuario recibe el mensaje
+                     (nunca se ejecuta ninguna orden)
 ```
 
 ### Flujo diario
@@ -58,7 +58,10 @@ prices.py     news_ingestion.py   state.py (SQLite)   prices.py + state.py
    tesis corta. Cada prompt/response se guarda en `llm_signals` (SQLite) para
    backtesting.
 4. `reports.py` arma el mensaje de 2 secciones y `notifier.py` lo envía por
-   WhatsApp (o Telegram cuando se implemente).
+   los canales de `PORTFOLIOWATCHER_NOTIFIERS` (WhatsApp, correo o Telegram).
+   El destino se resuelve con la precedencia `--notify-to` > variables del
+   proceso (`WHATSAPP_TO`/`EMAIL_TO`) > `.env` — ver el contrato al inicio de
+   `notifier.py`.
 
 ### Flujo semanal (cada `analysis_interval_days`)
 1. `prices.py` trae precio actual, cierre anterior y sector por ticker.

@@ -12,7 +12,8 @@ Environment:
                                 capability on it)
     ``ACS_EMAIL_SENDER``       verified sender, e.g.
                                 ``DoNotReply@<guid>.azurecomm.net``
-    ``EMAIL_TO``               destination address(es), comma-separated
+    ``EMAIL_TO``               destination address(es), comma-separated;
+                                overridden by ``--notify-to``
     ``EMAIL_SUBJECT``          subject line (default provided)
 """
 
@@ -23,14 +24,9 @@ import logging
 import os
 
 from ..models import Alert, Hit
-from .base import Notifier, NotifierError, group_hits, register_notifier, render_text
+from .base import Notifier, NotifierError, env_list, group_hits, register_notifier, render_text
 
 log = logging.getLogger(__name__)
-
-
-def _env_list(name: str) -> list[str]:
-    raw = os.getenv(name, "")
-    return [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
 
 
 class EmailNotifier(Notifier):
@@ -44,7 +40,13 @@ class EmailNotifier(Notifier):
             "ACS_CONNECTION_STRING"
         )
         self.sender = options.get("sender") or os.getenv("ACS_EMAIL_SENDER")
-        self.recipients: list[str] = options.get("to") or _env_list("EMAIL_TO")
+        # ``options["to"]`` is the destination the caller resolved with
+        # :func:`stockwatcher.notifiers.base.resolve_destinations` (``--notify-to``
+        # first, then the process environment, then the YAML).  Reading
+        # ``EMAIL_TO`` here is only the fallback for a notifier built directly,
+        # and *must* stay lower priority: see that function for why
+        # ``load_dotenv(override=True)`` would cross users' alerts.
+        self.recipients: list[str] = options.get("to") or env_list("EMAIL_TO")
         self.subject = options.get("subject") or os.getenv(
             "EMAIL_SUBJECT", "StockWatcher: nuevo stock disponible"
         )
@@ -124,4 +126,4 @@ class EmailNotifier(Notifier):
             await asyncio.to_thread(client.close)
 
 
-register_notifier("email", lambda options: EmailNotifier(options))
+register_notifier("email", lambda options: EmailNotifier(options), destination_env="EMAIL_TO")

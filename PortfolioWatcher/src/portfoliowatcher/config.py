@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 
 class ConfigError(ValueError):
@@ -121,24 +124,48 @@ def _risk_profile_from_dict(raw: Any) -> RiskProfile:
     )
 
 
+def _parse_interval(value: Any, source: str) -> int:
+    """Validate ``analysis_interval_days`` from either the YAML or the environment."""
+    try:
+        interval = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"{source} must be an integer, got {value!r}") from exc
+    if interval <= 0:
+        raise ConfigError(f"{source} must be positive")
+    return interval
+
+
+def _notifiers_from_yaml(raw: Any) -> list[str] | None:
+    """Accept either a YAML list or a comma-separated string."""
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        names = [n.strip() for n in raw.split(",") if n.strip()]
+    elif isinstance(raw, list):
+        names = [str(n).strip() for n in raw if str(n).strip()]
+    else:
+        raise ConfigError(f"'notifiers' must be a list or comma-separated string, got {raw!r}")
+    return names or None
+
+
 def load_config(path: str | os.PathLike[str] = "config/portfolio.yaml") -> PortfolioConfig:
-    """Load ``portfolio.yaml`` and apply environment variable overrides."""
+    """Load ``portfolio.yaml`` and apply environment variable overrides.
+
+    An empty ``holdings`` list is *not* an error: multi-tenant callers invoke
+    PortfolioWatcher for users who have not registered any position yet, and a
+    hard failure there would surface as an uncontrolled traceback. It is logged
+    as a warning instead, and the CLI stops cleanly before doing any work.
+    """
     data = _read_yaml(Path(path))
 
     raw_holdings = data.get("holdings") or []
     if not raw_holdings:
-        raise ConfigError(f"{path} defines no holdings")
+        log.warning("%s defines no holdings; nothing to analyse", path)
     holdings = [_holding_from_dict(h) for h in raw_holdings]
 
     closed = [_closed_from_dict(c) for c in data.get("closed_positions") or []]
 
-    interval = data.get("analysis_interval_days", 7)
-    try:
-        interval = int(interval)
-    except (TypeError, ValueError) as exc:
-        raise ConfigError(f"'analysis_interval_days' must be an integer, got {interval!r}") from exc
-    if interval <= 0:
-        raise ConfigError("'analysis_interval_days' must be positive")
+    interval = _parse_interval(data.get("analysis_interval_days", 7), "'analysis_interval_days'")
 
     config = PortfolioConfig(
         analysis_interval_days=interval,
@@ -146,6 +173,16 @@ def load_config(path: str | os.PathLike[str] = "config/portfolio.yaml") -> Portf
         holdings=holdings,
         closed_positions=closed,
     )
+
+    # YAML is the base layer for these two; ``apply_env_overrides`` may still
+    # replace them, mirroring StockWatcher's "YAML base, env override" order.
+    state_path = data.get("state_path")
+    if state_path:
+        config.state_path = str(state_path)
+    notifiers = _notifiers_from_yaml(data.get("notifiers"))
+    if notifiers:
+        config.notifiers = notifiers
+
     return apply_env_overrides(config)
 
 
@@ -154,6 +191,12 @@ def apply_env_overrides(config: PortfolioConfig) -> PortfolioConfig:
     state_path = os.getenv("PORTFOLIOWATCHER_STATE_PATH")
     if state_path:
         config.state_path = state_path
+
+    interval_override = os.getenv("PORTFOLIOWATCHER_INTERVAL_OVERRIDE")
+    if interval_override:
+        config.analysis_interval_days = _parse_interval(
+            interval_override, "PORTFOLIOWATCHER_INTERVAL_OVERRIDE"
+        )
 
     config.azure_openai = AzureOpenAIConfig(
         endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),

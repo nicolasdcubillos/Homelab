@@ -1,0 +1,47 @@
+# Unit real del despliegue (no es un .example): el workflow
+# .github/workflows/deploy-homelabfrontend.yml lo copia a
+# /etc/systemd/system/homelab-dashboard.service en cada deploy, así que este
+# archivo es la fuente de verdad. Si necesitas cambiar una variable de entorno
+# o una ruta, cámbiala aquí y haz push; no edites el archivo en la VM a mano,
+# porque el siguiente deploy lo sobrescribe.
+#
+# El servicio escucha SOLO en 127.0.0.1:8000. Desde la migración a
+# multiusuario, la autenticación (login, sesiones, roles) la hace el propio
+# dashboard, así que Caddy ya NO necesita `basic_auth`; sigue siendo el
+# terminador de TLS.
+#
+# ExecStartPre aplica las migraciones de Alembic antes de arrancar: si un
+# despliegue trae un modelo de datos nuevo, la base se pone al día sola en
+# cada reinicio, sin un paso manual aparte. Es idempotente.
+
+[Unit]
+Description=Homelab Dashboard (panel de control web multiusuario)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/services/homelab/HomelabFrontend
+Environment=DASHBOARD_HOST=127.0.0.1
+Environment=DASHBOARD_PORT=8000
+Environment=DASHBOARD_APPS_FILE=/opt/services/homelab/HomelabFrontend/apps.yaml
+# DASHBOARD_DB_FILE se conserva apuntando a la base que ya existía en la VM:
+# la migración inicial añade las tablas del modelo multiusuario junto a la
+# tabla `job_runs` heredada, así que el historial de ejecuciones no se pierde.
+Environment=DASHBOARD_DB_FILE=/opt/services/homelab/HomelabFrontend/dashboard.db
+Environment=DASHBOARD_DATA_DIR=/opt/services/homelab/HomelabFrontend/data
+Environment=DASHBOARD_LOGS_DIR=/opt/services/homelab/HomelabFrontend/logs
+Environment=DASHBOARD_FRONTEND_DIST=/opt/services/homelab/HomelabFrontend/frontend/dist
+Environment=DASHBOARD_SECURE_COOKIES=true
+Environment=DASHBOARD_SCHEDULER_ENABLED=true
+ExecStartPre=/opt/services/homelab/HomelabFrontend/.venv/bin/homelab-dashboard migrate
+ExecStart=/opt/services/homelab/HomelabFrontend/.venv/bin/homelab-dashboard serve
+Restart=on-failure
+RestartSec=5
+# Corre como root porque el dashboard lanza subprocess bajo /opt/services/<app>/
+# y esas carpetas son de root. Si quieres más aislamiento, crea un usuario
+# dedicado con escritura solo sobre DASHBOARD_DATA_DIR, DASHBOARD_LOGS_DIR y
+# el `path`/`venv_bin` de cada app de apps.yaml.
+User=root
+
+[Install]
+WantedBy=multi-user.target

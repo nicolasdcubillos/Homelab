@@ -7,6 +7,7 @@ same engine watches sneakers today and GPUs or concert tickets tomorrow.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -25,6 +26,24 @@ class ConfigError(ValueError):
 #: Providers that need a real browser, and so a chromium install.
 BROWSER_PROVIDERS = frozenset({"playwright", "nike"})
 
+#: ``email:me@example.com`` — an explicit channel in front of a destination.
+_CHANNEL_PREFIX = re.compile(r"^([a-z][a-z0-9_]*):(.+)$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class NotifyTarget:
+    """A channel, plus optionally where that channel should deliver.
+
+    ``notify: [whatsapp]`` yields ``NotifyTarget("whatsapp")`` and the
+    destination comes from ``--notify-to`` or the environment;
+    ``notify: ["email:me@example.com"]`` pins it in the YAML.  See
+    :func:`stockwatcher.notifiers.base.resolve_destinations` for the full
+    precedence, which is a security contract in a multi-user deployment.
+    """
+
+    channel: str
+    to: tuple[str, ...] = ()
+
 
 @dataclass
 class Watch:
@@ -39,7 +58,7 @@ class Watch:
     max_price: Decimal | None = None
     currency: str = "USD"
     countries: list[str] = field(default_factory=lambda: ["US"])
-    notify: list[str] = field(default_factory=lambda: ["whatsapp"])
+    notify: list[NotifyTarget] = field(default_factory=lambda: [NotifyTarget("whatsapp")])
     stores: list[str] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
     enabled: bool = True
@@ -88,12 +107,24 @@ class DiscoveryConfig:
     max_promotions_per_run: int = 10
     retire_after_failures: int = 5
     timeout: float = 8.0
+    #: Optional path to a *shared*, append-only store registry.  Discovery
+    #: writes promotions there instead of into the state store, so a fleet of
+    #: users sharing this checkout only pays for each discovery once — see
+    #: :mod:`stockwatcher.discovery.registry`.  Unset keeps the single-user
+    #: behaviour (promotions land in the state store).
+    registry_path: str | None = None
 
 
 @dataclass
 class NotifyConfig:
     max_hits_per_message: int = 6
     max_messages_per_run: int = 5
+    #: channel -> destinations declared in the YAML (``notify_options.to``).
+    #: Lowest precedence; the environment and ``--notify-to`` both win.
+    to: dict[str, list[str]] = field(default_factory=dict)
+    #: channel -> destinations passed with ``--notify-to``.  Highest
+    #: precedence: an explicit per-invocation destination beats every global.
+    override_to: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -177,6 +208,91 @@ def _as_gender(value: Any) -> Gender:
     return aliases[text]
 
 
+def _split_destinations(value: Any) -> list[str]:
+    """``"a@x.com, b@x.com"`` or ``["a@x.com", "b@x.com"]`` -> a flat list."""
+    items = value if isinstance(value, (list, tuple)) else [value]
+    out: list[str] = []
+    for item in items:
+        if item is None:
+            continue
+        for part in str(item).replace(";", ",").split(","):
+            part = part.strip()
+            if part and part not in out:
+                out.append(part)
+    return out
+
+
+def _infer_channel(destination: str) -> str:
+    """Route a destination with no explicit channel by its shape.
+
+    An address goes to email, anything else (an E.164 number) to WhatsApp.
+    This is what lets ``--notify-to me@example.com`` do the obvious thing.
+    """
+    return "email" if "@" in destination else "whatsapp"
+
+
+def parse_notify_destinations(values: Any) -> dict[str, list[str]]:
+    """Parse ``--notify-to`` / ``notify_options.to`` into channel -> destinations.
+
+    Accepts, in any combination:
+
+    * ``"email:me@example.com"``           explicit channel
+    * ``"me@example.com"``                 channel inferred from the shape
+    * ``"whatsapp:+57300,+57301"``         several destinations for one channel
+    * ``{"email": ["me@example.com"]}``    a mapping (YAML only)
+    """
+    out: dict[str, list[str]] = {}
+
+    def add(channel: str, destination: str) -> None:
+        bucket = out.setdefault(channel, [])
+        if destination not in bucket:
+            bucket.append(destination)
+
+    if not values:
+        return out
+    if isinstance(values, dict):
+        for channel, raw in values.items():
+            name = str(channel).strip().lower()
+            if not name:
+                raise ConfigError("a notify destination needs a channel name")
+            for destination in _split_destinations(raw):
+                add(name, destination)
+        return out
+
+    entries = values if isinstance(values, (list, tuple)) else [values]
+    for entry in entries:
+        text = str(entry).strip()
+        if not text or text.endswith(":"):
+            raise ConfigError(f"empty notify destination: {entry!r}")
+        match = _CHANNEL_PREFIX.match(text)
+        channel = match.group(1).lower() if match else None
+        destinations = _split_destinations(match.group(2) if match else text)
+        if not destinations:
+            raise ConfigError(f"empty notify destination: {entry!r}")
+        for destination in destinations:
+            add(channel or _infer_channel(destination), destination)
+    return out
+
+
+def _notify_target(raw: Any) -> NotifyTarget:
+    """``"whatsapp"`` or ``"email:me@example.com"`` -> a :class:`NotifyTarget`."""
+    text = str(raw).strip()
+    if not text or text.endswith(":"):
+        raise ConfigError(f"empty 'notify' entry: {raw!r}")
+    match = _CHANNEL_PREFIX.match(text)
+    if match:
+        return NotifyTarget(
+            channel=match.group(1).lower(),
+            to=tuple(_split_destinations(match.group(2))),
+        )
+    if "@" in text or text.startswith("+"):
+        raise ConfigError(
+            f"notify entry {text!r} looks like a destination; write it as "
+            f"'{_infer_channel(text)}:{text}'"
+        )
+    return NotifyTarget(channel=text.lower())
+
+
 def _watch_from_dict(raw: dict, defaults: dict) -> Watch:
     if not isinstance(raw, dict):
         raise ConfigError(f"each watch must be a mapping, got {raw!r}")
@@ -197,7 +313,8 @@ def _watch_from_dict(raw: dict, defaults: dict) -> Watch:
         max_price=_as_decimal(merged.get("max_price")),
         currency=str(merged.get("currency") or "USD").upper(),
         countries=[c.upper() for c in _as_list(merged.get("countries")) or ["US"]],
-        notify=_as_list(merged.get("notify")) or ["whatsapp"],
+        notify=[_notify_target(n) for n in _as_list(merged.get("notify"))]
+        or [NotifyTarget("whatsapp")],
         stores=[s.lower() for s in _as_list(merged.get("stores"))],
         queries=_as_list(merged.get("queries")),
         enabled=bool(merged.get("enabled", True)),
@@ -235,6 +352,28 @@ def _dataclass_from_dict(cls, raw: Any):
     if unknown:
         raise ConfigError(f"unknown {cls.__name__} keys: {sorted(unknown)}")
     return cls(**raw)
+
+
+def _notify_config_from_dict(raw: Any) -> NotifyConfig:
+    """Build :class:`NotifyConfig`, normalizing the ``to`` destinations.
+
+    ``override_to`` is deliberately *not* readable from the YAML: it carries
+    the ``--notify-to`` flag, whose whole point is to be per-invocation.
+    """
+    if not raw:
+        return NotifyConfig()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"expected a mapping for NotifyConfig, got {raw!r}")
+    known = {"max_hits_per_message", "max_messages_per_run", "to"}
+    unknown = set(raw) - known
+    if unknown:
+        raise ConfigError(f"unknown NotifyConfig keys: {sorted(unknown)}")
+    defaults = NotifyConfig()
+    return NotifyConfig(
+        max_hits_per_message=int(raw.get("max_hits_per_message", defaults.max_hits_per_message)),
+        max_messages_per_run=int(raw.get("max_messages_per_run", defaults.max_messages_per_run)),
+        to=parse_notify_destinations(raw.get("to")),
+    )
 
 
 def _read_yaml(path: Path) -> dict:
@@ -286,11 +425,11 @@ def load_config(
         discovery=_dataclass_from_dict(
             DiscoveryConfig, data.get("discovery") or stores_data.get("discovery")
         ),
-        notify=_dataclass_from_dict(NotifyConfig, data.get("notify_options")),
+        notify=_notify_config_from_dict(data.get("notify_options")),
         runtime=_dataclass_from_dict(RuntimeConfig, data.get("runtime")),
         state=_dataclass_from_dict(StateConfig, data.get("state")),
     )
-    return apply_env_overrides(config)
+    return merge_registry_stores(apply_env_overrides(config))
 
 
 def apply_env_overrides(config: Config) -> Config:
@@ -309,6 +448,9 @@ def apply_env_overrides(config: Config) -> Config:
     table = os.getenv("AZURE_TABLE_NAME")
     if table:
         config.state.table_name = table
+    registry = os.getenv("STOCKWATCHER_DISCOVERY_REGISTRY")
+    if registry:
+        config.discovery.registry_path = registry
     rate = os.getenv("STOCKWATCHER_RATE")
     if rate:
         try:
@@ -331,3 +473,28 @@ def apply_env_overrides(config: Config) -> Config:
 
 def _env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def merge_registry_stores(config: Config) -> Config:
+    """Fold the shared discovery registry into the configured store list.
+
+    Discovery promotes stores into a registry shared by every user rather than
+    into one user's private state (see :mod:`stockwatcher.discovery.registry`),
+    so that file has to be read back here — otherwise nobody would ever scan
+    what discovery found.  Configured stores win on provider/country, and the
+    call is idempotent so the CLI can re-run it after ``--discovery-registry``.
+    """
+    path = config.discovery.registry_path
+    if not path:
+        return config
+    registry_file = Path(path)
+    if not registry_file.exists():
+        return config
+    known = {s.host for s in config.stores}
+    for raw in _read_yaml(registry_file).get("stores") or []:
+        store = _store_from_dict(raw)
+        if store.host in known:
+            continue
+        known.add(store.host)
+        config.stores.append(store)
+    return config

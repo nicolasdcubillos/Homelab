@@ -21,10 +21,38 @@ jobs:
           cd HomelabFrontend
           sudo -u azureuser bash -c '.venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e .'
 
+      # El dashboard dejó de servir plantillas Jinja: ahora sirve un SPA de
+      # React compilado. `frontend/dist` no se versiona (es un artefacto de
+      # build), así que hay que generarlo en la VM en cada deploy que toque el
+      # frontend. `npm ci` respeta package-lock.json, así que es reproducible.
+      - name: Build frontend (SPA)
+        run: |
+          set -e
+          cd /opt/services/homelab/HomelabFrontend/frontend
+          sudo -u azureuser npm ci --no-audit --no-fund
+          sudo -u azureuser npm run build
+          test -f dist/index.html
+
+      # El unit vive en el repo para que el despliegue sea reproducible: las
+      # variables nuevas (DASHBOARD_DATA_DIR, DASHBOARD_FRONTEND_DIST) y el
+      # ExecStartPre de las migraciones llegan solos, sin editar la VM a mano.
+      - name: Install systemd unit
+        run: |
+          set -e
+          sudo install -m 0644 \
+            /opt/services/homelab/HomelabFrontend/systemd/homelab-dashboard.service \
+            /etc/systemd/system/homelab-dashboard.service
+          sudo systemctl daemon-reload
+
       - name: Restart dashboard service
         run: |
           set -e
           sudo systemctl restart homelab-dashboard.service
-          sleep 3
+          sleep 5
           systemctl is-active homelab-dashboard.service
-          curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
+          # La raíz devuelve el SPA; /api/v1/auth/me debe responder 401 sin
+          # sesión (no 200): prueba de que no hay acceso anónimo a datos.
+          curl -s -o /dev/null -w "GET /             -> %{http_code}\n" http://127.0.0.1:8000/
+          code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/v1/auth/me)
+          echo "GET /api/v1/auth/me -> $code"
+          test "$code" = "401"

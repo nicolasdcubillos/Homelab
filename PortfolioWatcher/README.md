@@ -36,9 +36,11 @@ con dos features:
     (`outcome_30d`/`outcome_90d` quedan vacíos para completarse manualmente).
 - **Estado**: SQLite local (`data/portfoliowatcher.db`) — dedupe de noticias,
   historial de señales, snapshots de precio.
-- **Notificación**: WhatsApp vía Azure Communication Services (mismo patrón
-  que el proyecto hermano StockWatcher), con una interfaz `Notifier` que
-  también admite un stub de Telegram como alternativa más simple.
+- **Notificación**: WhatsApp y correo vía Azure Communication Services (mismo
+  recurso ACS y mismo patrón que el proyecto hermano StockWatcher), con una
+  interfaz `Notifier` que también admite Telegram como alternativa. El canal
+  se elige con `PORTFOLIOWATCHER_NOTIFIERS` (`whatsapp`, `email`, `telegram`,
+  `console`) y el destino puede fijarse por invocación con `--notify-to`.
 
 Ver `docs/architecture.md` para un diagrama del flujo completo.
 
@@ -75,6 +77,9 @@ Ver comentarios en `.env.example`. Resumen:
   análisis).
 - `ACS_CONNECTION_STRING`, `ACS_CHANNEL_REGISTRATION_ID`, `WHATSAPP_TO`, etc.:
   notificación WhatsApp.
+- `ACS_EMAIL_SENDER`, `EMAIL_TO`, `EMAIL_SUBJECT`: notificación por correo
+  (mismo recurso ACS que WhatsApp, capacidad Email enlazada aparte).
+- `PORTFOLIOWATCHER_NOTIFIERS`: canales a usar, separados por coma.
 - `SEC_EDGAR_USER_AGENT`: identifícate ante SEC EDGAR (política de acceso
   justo — ver https://www.sec.gov/os/webmaster-faq#developers).
 - `PORTFOLIOWATCHER_STATE_PATH`: ruta del archivo SQLite.
@@ -88,6 +93,28 @@ portfoliowatcher weekly --dry-run --force
 
 `--dry-run` imprime el mensaje en consola en vez de enviarlo por WhatsApp.
 `--force` en `weekly` ignora el chequeo de intervalo (`analysis_interval_days`).
+`analyze --interval-days N` corre el análisis completo forzando otro intervalo.
+
+### Destino de la notificación
+
+El destino se resuelve con esta precedencia, de mayor a menor:
+
+1. `--notify-to` (explícito, por invocación):
+   ```bash
+   portfoliowatcher --notify-to "usuario@example.com" daily
+   ```
+2. Variables del entorno del proceso (`WHATSAPP_TO` / `EMAIL_TO`).
+3. Lo que traiga el archivo `.env`.
+
+Que el punto 2 gane sobre el 3 es lo que permite invocar PortfolioWatcher una
+vez por usuario (inyectando su destino por `env=`) compartiendo un mismo `.env`
+con solo los secretos comunes. Por eso `cli.py` usa `load_dotenv()` con su
+`override=False` por defecto: **cambiarlo a `override=True` redirigiría las
+alertas de todos los usuarios al destino del archivo compartido.** El contrato
+está documentado al inicio de `notifier.py` y fijado por `tests/test_cli.py`.
+
+Un `config/portfolio.yaml` sin holdings no es un error: se registra una
+advertencia y la corrida termina limpiamente sin analizar nada.
 
 ## Tests
 

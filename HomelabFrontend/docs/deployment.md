@@ -1,10 +1,14 @@
 # Despliegue en producción
 
-Este documento describe, paso a paso, cómo se desplegó HomelabDashboard en la
-VM `homelab-vm` (la misma VM Linux donde corre PortfolioWatcher, y donde
-correrá StockWatcher). Es la referencia real usada en producción — no un
-tutorial genérico — así que incluye las decisiones concretas que se tomaron
-y por qué.
+Este documento describe, paso a paso, cómo se despliega HomelabDashboard en la
+VM `homelab-vm` (la misma VM Linux donde corren PortfolioWatcher y
+StockWatcher). Es la referencia real usada en producción — no un tutorial
+genérico — así que incluye las decisiones concretas que se tomaron y por qué.
+
+Desde la migración a multiusuario, el dashboard tiene su **propia
+autenticación** (registro, login, roles, sesiones), su **propia base de
+datos** (SQLite + Alembic) y un **frontend compilado** (React/Vite) que
+FastAPI sirve como estático. Caddy deja de hacer Basic Auth: solo termina TLS.
 
 ## 0. Prerrequisitos
 
@@ -19,9 +23,9 @@ y por qué.
   HTTPS respectivamente). En el Terraform de PortfolioWatcher esto es la
   regla `AllowWebDashboard` en `infra/main.tf`, controlada por la variable
   `allowed_web_source_address` (por defecto `"*"`, es decir, abierta a
-  internet a propósito — el dashboard se protege con TLS + Basic Auth, no
-  con restricción de IP, porque se accede desde un celular en redes que
-  cambian de IP constantemente).
+  internet a propósito — el dashboard se protege con TLS + su propia
+  autenticación, no con restricción de IP, porque se accede desde un celular
+  en redes que cambian de IP constantemente).
 
 ## 1. Dominio para HTTPS: usa el DNS gratuito de Azure, no nip.io
 
@@ -71,19 +75,12 @@ Esto instala y habilita el servicio `caddy.service` automáticamente.
 
 ## 3. Configurar `/etc/caddy/Caddyfile`
 
-Genera el hash de tu contraseña y escribe el Caddyfile real (ver
-`Caddyfile.example` en este repo para la plantilla sin credenciales):
-
-```bash
-caddy hash-password --plaintext 'TU_CONTRASEÑA_FUERTE'
-```
+Ver `Caddyfile.example` en este repo para la plantilla. **Ya no lleva
+`basic_auth`** — la autenticación la hace el propio dashboard:
 
 ```caddyfile
 # /etc/caddy/Caddyfile
 homelab-3nob7f.eastus.cloudapp.azure.com {
-    basic_auth {
-        nicolas <hash-bcrypt-generado-arriba>
-    }
     reverse_proxy 127.0.0.1:8000
 }
 ```
@@ -106,7 +103,6 @@ git clone https://github.com/nicolasdcubillos/HomelabDashboard.git \
 cd /opt/services/homelab-dashboard
 python3.11 -m venv .venv
 ./.venv/bin/pip install -e .
-mkdir -p logs
 ```
 
 Para actualizaciones posteriores:
@@ -115,10 +111,53 @@ Para actualizaciones posteriores:
 cd /opt/services/homelab-dashboard
 git fetch origin && git reset --hard origin/main
 ./.venv/bin/pip install -e .
+./.venv/bin/homelab-dashboard migrate   # también corre solo, vía ExecStartPre
 systemctl restart homelab-dashboard
 ```
 
-## 5. `apps.yaml` real
+## 5. Frontend: compilar el `dist` en la VM
+
+El servidor sirve `frontend/dist` como estático (con fallback SPA para
+cualquier ruta que no sea `/api/*`). Hay que compilarlo tras cada
+`git pull` que toque `frontend/`.
+
+**Opción A — Node en la VM (recomendada, sin dependencias externas).** Se
+instala una sola vez con NodeSource (Ubuntu):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y -qq nodejs
+node -v   # v20.x
+```
+
+Y se compila:
+
+```bash
+cd /opt/services/homelab-dashboard/frontend
+npm ci
+npm run build      # genera frontend/dist/
+```
+
+Repite `npm ci && npm run build` cada vez que actualices el código (el
+`dist/` no se versiona, ver `.gitignore`).
+
+**Opción B — artefacto precompilado desde CI, sin instalar Node en la VM.**
+El workflow `.github/workflows/ci.yml` compila el frontend en cada push a
+`main` y sube el resultado como artefacto (`frontend-dist`, 30 días de
+retención). Para desplegarlo sin Node local:
+
+```bash
+# Requiere gh CLI autenticado en la VM (gh auth login), una sola vez.
+cd /opt/services/homelab-dashboard
+gh run download --repo nicolasdcubillos/HomelabDashboard \
+  --name frontend-dist --dir frontend/dist -R nicolasdcubillos/HomelabDashboard
+```
+
+Ambas opciones son válidas; la A es más simple de automatizar en un script de
+despliegue propio, la B evita instalar Node en la VM a costa de depender de
+`gh` autenticado. El despliegue de referencia usa la opción A.
+
+## 6. `apps.yaml` real
 
 Copia `apps.yaml.example` a `apps.yaml` **en la VM** (este archivo nunca se
 versiona, ver `.gitignore`) y ajusta las rutas si difieren de
@@ -128,10 +167,15 @@ versiona, ver `.gitignore`) y ajusta las rutas si difieren de
 cp apps.yaml.example apps.yaml
 ```
 
-## 6. Servicio systemd
+## 7. Servicio systemd
 
 Usa `systemd/homelab-dashboard.service.example` como plantilla: cópialo a
-`/etc/systemd/system/homelab-dashboard.service` y luego:
+`/etc/systemd/system/homelab-dashboard.service` y ajusta las rutas si tu
+instalación no vive en `/opt/services/homelab-dashboard`. Nota las variables
+nuevas: `DASHBOARD_DATA_DIR` (base de datos + workspaces por usuario),
+`DASHBOARD_FRONTEND_DIST` (el `dist/` compilado en el paso 5), y
+`ExecStartPre=... migrate` (aplica las migraciones de Alembic antes de
+arrancar, en cada reinicio del servicio).
 
 ```bash
 systemctl daemon-reload
@@ -140,34 +184,54 @@ systemctl is-active homelab-dashboard.service
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/   # 200 esperado
 ```
 
-## 7. Verificación end-to-end
+## 8. Sembrar el primer administrador
 
-Desde cualquier máquina (celular, laptop):
+La primera vez (o tras una base nueva), crea la cuenta admin desde la propia
+VM — la contraseña se pide de forma interactiva, nunca por argumento:
 
 ```bash
-# Sin credenciales -> 401
-curl -s -o /dev/null -w '%{http_code}\n' https://homelab-3nob7f.eastus.cloudapp.azure.com/
-
-# Con credenciales -> 200
-curl -s -o /dev/null -w '%{http_code}\n' -u 'nicolas:TU_CONTRASEÑA' \
-  https://homelab-3nob7f.eastus.cloudapp.azure.com/
+cd /opt/services/homelab-dashboard
+./.venv/bin/homelab-dashboard create-admin --email tu-correo@ejemplo.com
 ```
 
-O simplemente abre la URL en el navegador — el certificado debe verse válido
-(sin advertencias) y el navegador debe pedir usuario/contraseña.
+Entra a `https://tu-dominio/` y usa ese correo y contraseña para iniciar
+sesión. Desde ahí puedes reconstruir tu configuración (watches, holdings,
+notificaciones, programación) directamente en la UI.
+
+## 9. Verificación end-to-end
+
+Desde cualquier máquina (celular, laptop), abre la URL del dominio en el
+navegador — el certificado debe verse válido (sin advertencias), la pantalla
+de login debe cargar, y tras autenticarte debes ver el panel.
+
+```bash
+# Sin sesión, la API rechaza con 401 (no 200): confirma que no hay acceso
+# anónimo a datos.
+curl -s -o /dev/null -w '%{http_code}\n' https://tu-dominio/api/v1/auth/me
+```
 
 ## Notas y decisiones de diseño
 
 - **Por qué Caddy y no Nginx/Certbot**: Caddy obtiene y renueva certificados
   Let's Encrypt automáticamente sin configuración adicional ni cronjobs de
-  renovación, y su sintaxis de `basic_auth` + `reverse_proxy` es mínima.
+  renovación, y su sintaxis de `reverse_proxy` es mínima.
 - **Por qué el dashboard solo escucha en 127.0.0.1**: toda la superficie de
-  ataque pública (TLS, auth, parsing HTTP crudo) queda concentrada en Caddy,
-  que es software maduro y de un solo propósito; la app Python nunca recibe
-  tráfico no autenticado directamente.
+  ataque pública (TLS, parsing HTTP crudo) queda concentrada en Caddy, que es
+  software maduro y de un solo propósito; la app Python nunca recibe tráfico
+  no autenticado directamente desde internet.
+- **Por qué Caddy ya no hace Basic Auth**: el modelo pasó de single-user a
+  multiusuario con roles; Basic Auth solo soporta una identidad compartida y
+  no puede expresar "usuario X ve solo sus datos". La autenticación ahora vive
+  en el dashboard (sesiones httpOnly + CSRF, rate limiting en login).
+- **Por qué compilar el frontend en la VM en vez de versionar `dist/`**:
+  versionar un build generado duplica la fuente de verdad y ensucia el
+  historial de git con binarios. Compilar en CI y en la VM (opción A) o
+  descargar el artefacto de CI (opción B) mantiene el repo limpio; ver
+  `.github/workflows/ci.yml`.
 - **Por qué `domain_name_label` de Azure en vez de una Dynamic DNS externa
   (DuckDNS, No-IP, etc.)**: es gratis, no depende de un servicio de terceros
   adicional, y Microsoft lo mantiene como parte del propio recurso de IP
   pública — se actualiza solo si la IP cambia.
-- **Regenerar la contraseña**: `caddy hash-password --plaintext 'nueva'`,
-  reemplaza el hash en `/etc/caddy/Caddyfile`, y `systemctl reload caddy`.
+- **Migraciones**: `ExecStartPre` corre `homelab-dashboard migrate` en cada
+  arranque del servicio; es idempotente (no hace nada si ya está al día), así
+  que no hay riesgo de aplicarla dos veces.

@@ -1,11 +1,12 @@
 # HomelabDashboard - Caddyfile de referencia (EJEMPLO, sin credenciales reales)
 #
 # Copia este archivo a /etc/caddy/Caddyfile (o el que use tu instalación) y
-# reemplaza el dominio y las credenciales por las reales. Genera el hash de
-# la contraseña con: caddy hash-password
+# reemplaza el dominio por el real.
 #
-# El dashboard debe seguir escuchando solo en 127.0.0.1 (DASHBOARD_HOST), y
-# es Caddy quien expone el puerto público con TLS + Basic Auth.
+# Desde la migración a multiusuario, el dashboard tiene su propia
+# autenticación (registro/login con roles, sesiones httpOnly + CSRF), así que
+# Caddy YA NO hace HTTP Basic Auth: solo termina TLS y reenvía el tráfico. La
+# app sigue escuchando exclusivamente en 127.0.0.1 (DASHBOARD_HOST).
 #
 # Dominio: usa el DNS gratuito que Azure asigna a la IP pública de la VM
 # (domain_name_label -> *.cloudapp.azure.com) en vez de servicios tipo
@@ -13,10 +14,5 @@
 # docs/deployment.md para el detalle completo.
 
 dashboard.tu-dominio.example {
-    basic_auth {
-        # usuario  hash_bcrypt_generado_con_"caddy hash-password"
-        admin JDJhJDE0JEV4YW1wbGVIYXNoTm9SZWFsQ3JlZGVudGlhbA
-    }
-
     reverse_proxy localhost:8000
 }

@@ -16,7 +16,13 @@ import logging
 import sys
 from pathlib import Path
 
-from .config import Config, ConfigError, load_config
+from .config import (
+    Config,
+    ConfigError,
+    load_config,
+    merge_registry_stores,
+    parse_notify_destinations,
+)
 from .http import HttpClient
 from .models import Store
 from .providers import build_provider
@@ -50,6 +56,16 @@ def _load(args: argparse.Namespace) -> Config:
         config.state.backend = args.state_backend
     if getattr(args, "state_path", None):
         config.state.path = args.state_path
+    if getattr(args, "discovery_registry", None):
+        config.discovery.registry_path = args.discovery_registry
+        # The registry holds stores discovery already promoted; they only get
+        # scanned if they are folded back into the store list.
+        merge_registry_stores(config)
+    if getattr(args, "notify_to", None):
+        # Highest-precedence destination: an explicit flag beats WHATSAPP_TO /
+        # EMAIL_TO from the environment, which in turn beats the YAML.  See
+        # stockwatcher.notifiers.base.resolve_destinations.
+        config.notify.override_to = parse_notify_destinations(args.notify_to)
     if getattr(args, "concurrency", None):
         config.runtime.concurrency = args.concurrency
     if getattr(args, "store", None):
@@ -144,7 +160,7 @@ async def _cmd_stores(args: argparse.Namespace) -> int:
     # "x" marks an *enabled* store, the way a ticked checkbox reads.
     for store in config.stores:
         flag = "x" if store.enabled else " "
-        print(f"[{flag}] {store.host:38s} {store.provider:11s} {store.country}  (config)")
+        print(f"[{flag}] {store.host:38s} {store.provider:11s} {store.country}  ({store.source})")
     for record in sorted(records, key=lambda r: r.host):
         if any(s.host == record.host for s in config.stores):
             continue
@@ -216,6 +232,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json-logs", action="store_true", help="structured logs for Azure")
     parser.add_argument("--state-backend", choices=["sqlite", "azure_table", "none"])
     parser.add_argument("--state-path", help="sqlite database path")
+    parser.add_argument(
+        "--discovery-registry",
+        metavar="PATH",
+        help=(
+            "shared append-only YAML registry for discovered stores; keeps the "
+            "store registry out of a per-user state database"
+        ),
+    )
+    parser.add_argument(
+        "--notify-to",
+        action="append",
+        metavar="[CHANNEL:]DEST",
+        help=(
+            "where to send alerts, e.g. 'me@example.com', '+573001234567' or "
+            "'email:me@example.com' (repeatable).  Wins over WHATSAPP_TO / "
+            "EMAIL_TO and over the YAML"
+        ),
+    )
     parser.add_argument("--concurrency", type=int)
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -248,15 +282,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def load_env_file(path: str | Path = ".env") -> None:
+    """Load ``.env`` **without** overriding the process environment.
+
+    ``override=False`` (python-dotenv's default) is a deliberate security
+    contract, not an accident: StockWatcher is invoked once per user by an
+    external scheduler that injects that user's ``WHATSAPP_TO`` / ``EMAIL_TO``
+    into the subprocess environment, while every user shares this checkout and
+    therefore this one ``.env``.  Switching to ``load_dotenv(override=True)``
+    would make the shared file win and send *every* user's alerts to whatever
+    destination it carries.  Do not change this without re-reading
+    :func:`stockwatcher.notifiers.base.resolve_destinations`; ``--notify-to``
+    exists so callers never have to depend on this subtlety.
+    """
     try:
         from dotenv import load_dotenv
-
-        env_file = Path(".env")
-        if env_file.exists():
-            load_dotenv(env_file)
     except ImportError:  # pragma: no cover - optional
-        pass
+        return
+    env_file = Path(path)
+    if env_file.exists():
+        load_dotenv(env_file)
+
+
+def main(argv: list[str] | None = None) -> int:
+    load_env_file()
 
     parser = build_parser()
     args = parser.parse_args(argv)

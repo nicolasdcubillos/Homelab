@@ -4,12 +4,17 @@
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now homelab-dashboard.service
 #
-# El servicio escucha SOLO en 127.0.0.1:8000 -- Caddy es quien expone el
-# puerto público con TLS + Basic Auth (ver Caddyfile.example y
-# docs/deployment.md).
+# El servicio escucha SOLO en 127.0.0.1:8000. Desde esta migración a
+# multiusuario, la autenticación (login, sesiones, roles) la hace el propio
+# dashboard, así que Caddy ya NO necesita `basic_auth`; sigue siendo el
+# terminador de TLS (ver Caddyfile.example y docs/deployment.md).
+#
+# ExecStartPre aplica las migraciones de Alembic antes de arrancar: si un
+# despliegue trae un modelo de datos nuevo, la base se pone al día sola en
+# cada reinicio del servicio, sin un paso manual aparte.
 
 [Unit]
-Description=Homelab Dashboard (panel de control web)
+Description=Homelab Dashboard (panel de control web multiusuario)
 After=network.target
 
 [Service]
@@ -18,16 +23,21 @@ WorkingDirectory=/opt/services/homelab-dashboard
 Environment=DASHBOARD_HOST=127.0.0.1
 Environment=DASHBOARD_PORT=8000
 Environment=DASHBOARD_APPS_FILE=/opt/services/homelab-dashboard/apps.yaml
-Environment=DASHBOARD_DB_FILE=/opt/services/homelab-dashboard/dashboard.db
-Environment=DASHBOARD_LOGS_DIR=/opt/services/homelab-dashboard/logs
-ExecStart=/opt/services/homelab-dashboard/.venv/bin/homelab-dashboard
+Environment=DASHBOARD_DATA_DIR=/opt/services/homelab-dashboard/data
+Environment=DASHBOARD_LOGS_DIR=/opt/services/homelab-dashboard/data/logs
+Environment=DASHBOARD_FRONTEND_DIST=/opt/services/homelab-dashboard/frontend/dist
+Environment=DASHBOARD_SECURE_COOKIES=true
+Environment=DASHBOARD_SCHEDULER_ENABLED=true
+ExecStartPre=/opt/services/homelab-dashboard/.venv/bin/homelab-dashboard migrate
+ExecStart=/opt/services/homelab-dashboard/.venv/bin/homelab-dashboard serve
 Restart=on-failure
 RestartSec=5
 # NOTA: en el despliegue de referencia esto corre como root porque el propio
-# dashboard necesita permisos para leer/escribir configs y lanzar subprocess
-# bajo /opt/services/<otra-app>/, y esas carpetas son propiedad de root. Si
-# prefieres más aislamiento, crea un usuario dedicado (ej. "dashboard") con
-# permisos de escritura solo sobre los directorios que administra.
+# dashboard necesita permisos para lanzar subprocess bajo /opt/services/<otra
+# app>/, y esas carpetas son propiedad de root. Si prefieres más aislamiento,
+# crea un usuario dedicado (ej. "dashboard") con permisos de escritura solo
+# sobre los directorios que administra (DASHBOARD_DATA_DIR, DASHBOARD_LOGS_DIR
+# y el `path`/`venv_bin` de cada app en apps.yaml).
 User=root
 
 [Install]
