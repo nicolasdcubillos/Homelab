@@ -1,26 +1,15 @@
-name: One-off VM setup (fix env paths + verify)
+name: One-off VM setup (debug dashboard)
 on:
   workflow_dispatch: {}
 
 jobs:
-  fix:
+  debug:
     runs-on: [self-hosted, homelab-vm]
     steps:
-      - name: Fix stale paths in .env files
+      - name: Dashboard status + logs
         run: |
-          set -e
-          sed -i 's|/opt/services/stockwatcher|/opt/services/homelab/StockWatcher|g' /opt/services/homelab/StockWatcher/.env
-          sed -i 's|/opt/services/portfoliowatcher|/opt/services/homelab/PortfolioWatcher|g' /opt/services/homelab/PortfolioWatcher/.env
-          grep -n "PATH\|_STATE" /opt/services/homelab/StockWatcher/.env
-          grep -n "PATH\|_STATE" /opt/services/homelab/PortfolioWatcher/.env || true
-
-      - name: Re-run StockWatcher dry-run from new path
-        run: |
-          set -e
-          sudo -u azureuser bash -c 'export PLAYWRIGHT_BROWSERS_PATH=/home/azureuser/.cache/ms-playwright; cd /opt/services/homelab/StockWatcher && .venv/bin/stockwatcher run --dry-run --no-discovery 2>&1 | tail -20'
-
-      - name: Confirm dashboard fully active
-        run: |
-          sleep 5
-          systemctl is-active homelab-dashboard.service
-          curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
+          systemctl status homelab-dashboard.service --no-pager -l || true
+          echo "---journal---"
+          journalctl -u homelab-dashboard.service -n 60 --no-pager || true
+          echo "---unit file---"
+          cat /etc/systemd/system/homelab-dashboard.service
