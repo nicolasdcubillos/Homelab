@@ -1,0 +1,24 @@
+# Caddyfile real del despliegue (no es un .example): el workflow
+# .github/workflows/deploy-homelabfrontend.yml lo copia a /etc/caddy/Caddyfile
+# en cada deploy, así que este archivo es la fuente de verdad. No edites
+# /etc/caddy/Caddyfile en la VM a mano, porque el siguiente deploy lo
+# sobrescribe.
+#
+# Caddy solo termina TLS y reenvía: NO hace HTTP Basic Auth. Antes sí lo hacía,
+# porque el dashboard no tenía autenticación propia y era la única barrera. Ya
+# no aplica: la app tiene cuentas, roles y sesiones (cookie httpOnly + CSRF),
+# y mantener el basic_auth ahora sería peor que inútil — bloquearía también las
+# llamadas del SPA a /api/* y obligaría a compartir una contraseña común entre
+# todos los usuarios, justo lo contrario de lo que se buscaba al hacer la app
+# multiusuario.
+#
+# El dominio es el DNS gratuito que Azure asigna a la IP pública de la VM
+# (domain_name_label -> *.cloudapp.azure.com), en vez de servicios tipo
+# nip.io/sslip.io, que varias VPNs bloquean por defecto. Ver docs/deployment.md.
+#
+# La app escucha exclusivamente en 127.0.0.1:8000 (DASHBOARD_HOST), así que este
+# proxy es la única puerta de entrada desde internet.
+
+homelab-3nob7f.eastus.cloudapp.azure.com {
+	reverse_proxy 127.0.0.1:8000
+}

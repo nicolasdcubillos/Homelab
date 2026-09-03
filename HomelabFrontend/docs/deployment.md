@@ -1,9 +1,21 @@
 # Despliegue en producción
 
-Este documento describe, paso a paso, cómo se despliega HomelabDashboard en la
-VM `homelab-vm` (la misma VM Linux donde corren PortfolioWatcher y
-StockWatcher). Es la referencia real usada en producción — no un tutorial
-genérico — así que incluye las decisiones concretas que se tomaron y por qué.
+Este documento describe cómo se despliega el dashboard en la VM `homelab-vm`
+(la misma VM Linux donde corren PortfolioWatcher y StockWatcher). Es la
+referencia real usada en producción — no un tutorial genérico — así que incluye
+las decisiones concretas que se tomaron y por qué.
+
+**El despliegue es automático.** Los tres componentes viven en el monorepo
+[`nicolasdcubillos/Homelab`](https://github.com/nicolasdcubillos/Homelab), y un
+*runner* self-hosted instalado en la propia VM ejecuta los workflows de
+`.github/workflows/`. Cada push a `main` que toque `HomelabFrontend/**` dispara
+`deploy-homelabfrontend.yml`, que actualiza el código, compila el SPA, instala
+el unit de systemd y reinicia el servicio. **En condiciones normales no hay que
+tocar la VM a mano**; los pasos manuales de este documento están para entender
+qué hace el workflow, para el primer arranque y para diagnosticar.
+
+En este monorepo el dashboard es la carpeta `HomelabFrontend/` y se despliega
+en `/opt/services/homelab/HomelabFrontend`.
 
 Desde la migración a multiusuario, el dashboard tiene su **propia
 autenticación** (registro, login, roles, sesiones), su **propia base de
@@ -12,9 +24,12 @@ FastAPI sirve como estático. Caddy deja de hacer Basic Auth: solo termina TLS.
 
 ## 0. Prerrequisitos
 
-- La VM ya existe (provisionada vía Terraform en el repo de
-  [PortfolioWatcher](https://github.com/nicolasdcubillos/PortfolioWatcher),
-  carpeta `infra/`), con Python 3.11+, `git`, y acceso `sudo`.
+- La VM ya existe (provisionada vía Terraform, carpeta `PortfolioWatcher/infra`
+  del monorepo), con Python 3.10+, Node 20+, `git` y acceso `sudo`.
+- Un runner self-hosted de GitHub Actions corriendo en la VM con las etiquetas
+  `self-hosted` y `homelab-vm` (servicio
+  `actions.runner.nicolasdcubillos-Homelab.homelab-vm-runner`). Es lo que
+  ejecuta los despliegues.
 - Acceso a la VM: por SSH normal (`ssh azureuser@<ip-o-fqdn>`) si tu red lo
   permite, o vía `az vm run-command invoke` si estás en un entorno que
   bloquea el handshake SSH (ver nota de PortfolioWatcher `README.md`).
@@ -96,66 +111,65 @@ manual adicional.
 
 ## 4. Clonar y preparar el dashboard
 
+Solo para el primer arranque; después de esto las actualizaciones las hace el
+workflow:
+
 ```bash
 mkdir -p /opt/services
-git clone https://github.com/nicolasdcubillos/HomelabDashboard.git \
-  /opt/services/homelab-dashboard
-cd /opt/services/homelab-dashboard
-python3.11 -m venv .venv
+git clone https://github.com/nicolasdcubillos/Homelab.git /opt/services/homelab
+cd /opt/services/homelab/HomelabFrontend
+python3 -m venv .venv
 ./.venv/bin/pip install -e .
 ```
 
-Para actualizaciones posteriores:
+El clon pertenece a `azureuser`, no a root: los workflows hacen `git fetch` y
+`pip install` como ese usuario y solo escalan a `sudo` para tocar systemd.
+
+Las actualizaciones posteriores son automáticas (push a `main`). Si necesitas
+forzar una a mano — porque el runner está caído, por ejemplo — esto es
+exactamente lo que hace el workflow:
 
 ```bash
-cd /opt/services/homelab-dashboard
-git fetch origin && git reset --hard origin/main
-./.venv/bin/pip install -e .
-./.venv/bin/homelab-dashboard migrate   # también corre solo, vía ExecStartPre
-systemctl restart homelab-dashboard
+cd /opt/services/homelab
+sudo -u azureuser git fetch origin main && sudo -u azureuser git reset --hard origin/main
+cd HomelabFrontend
+sudo -u azureuser ./.venv/bin/pip install -e .
+cd frontend && sudo -u azureuser npm ci && sudo -u azureuser npm run build && cd ..
+sudo install -m 0644 systemd/homelab-dashboard.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl restart homelab-dashboard
+# `migrate` corre solo vía ExecStartPre; no hace falta invocarlo aparte.
 ```
+
+También puedes relanzar el despliegue sin cambiar código desde la pestaña
+Actions del repo (`workflow_dispatch`), o con
+`gh workflow run deploy-homelabfrontend.yml --repo nicolasdcubillos/Homelab`.
 
 ## 5. Frontend: compilar el `dist` en la VM
 
 El servidor sirve `frontend/dist` como estático (con fallback SPA para
-cualquier ruta que no sea `/api/*`). Hay que compilarlo tras cada
-`git pull` que toque `frontend/`.
+cualquier ruta que no sea `/api/*`). Como el `dist/` no se versiona (ver
+`.gitignore`), hay que compilarlo en la VM tras cada cambio del frontend —
+**esto lo hace el paso "Build frontend (SPA)" del workflow**, no tú.
 
-**Opción A — Node en la VM (recomendada, sin dependencias externas).** Se
-instala una sola vez con NodeSource (Ubuntu):
+Node se instala una sola vez con NodeSource (Ubuntu):
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y -qq nodejs
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y -qq nodejs
 node -v   # v20.x
 ```
 
-Y se compila:
+Y la compilación, si la haces a mano:
 
 ```bash
-cd /opt/services/homelab-dashboard/frontend
-npm ci
-npm run build      # genera frontend/dist/
+cd /opt/services/homelab/HomelabFrontend/frontend
+npm ci        # respeta package-lock.json, así que es reproducible
+npm run build # genera frontend/dist/
 ```
 
-Repite `npm ci && npm run build` cada vez que actualices el código (el
-`dist/` no se versiona, ver `.gitignore`).
-
-**Opción B — artefacto precompilado desde CI, sin instalar Node en la VM.**
-El workflow `.github/workflows/ci.yml` compila el frontend en cada push a
-`main` y sube el resultado como artefacto (`frontend-dist`, 30 días de
-retención). Para desplegarlo sin Node local:
-
-```bash
-# Requiere gh CLI autenticado en la VM (gh auth login), una sola vez.
-cd /opt/services/homelab-dashboard
-gh run download --repo nicolasdcubillos/HomelabDashboard \
-  --name frontend-dist --dir frontend/dist -R nicolasdcubillos/HomelabDashboard
-```
-
-Ambas opciones son válidas; la A es más simple de automatizar en un script de
-despliegue propio, la B evita instalar Node en la VM a costa de depender de
-`gh` autenticado. El despliegue de referencia usa la opción A.
+Se usa `npm ci` y no `npm install` a propósito: `ci` instala exactamente las
+versiones del lockfile y falla si el lockfile y el `package.json` no coinciden,
+que es lo que quieres en un despliegue.
 
 ## 6. `apps.yaml` real
 
@@ -169,17 +183,29 @@ cp apps.yaml.example apps.yaml
 
 ## 7. Servicio systemd
 
-Usa `systemd/homelab-dashboard.service.example` como plantilla: cópialo a
-`/etc/systemd/system/homelab-dashboard.service` y ajusta las rutas si tu
-instalación no vive en `/opt/services/homelab-dashboard`. Nota las variables
-nuevas: `DASHBOARD_DATA_DIR` (base de datos + workspaces por usuario),
-`DASHBOARD_FRONTEND_DIST` (el `dist/` compilado en el paso 5), y
-`ExecStartPre=... migrate` (aplica las migraciones de Alembic antes de
-arrancar, en cada reinicio del servicio).
+El unit **vive en el repo**, en `systemd/homelab-dashboard.service`, y el
+workflow lo copia a `/etc/systemd/system/` en cada despliegue. Esa es la fuente
+de verdad: si necesitas cambiar una ruta o una variable de entorno, cámbiala
+ahí y haz push. **No edites el archivo en la VM**, porque el siguiente
+despliegue lo sobrescribe.
+
+(El archivo `systemd/homelab-dashboard.service.example` sigue ahí como
+plantilla para quien despliegue esto fuera del monorepo, con rutas genéricas.)
+
+Variables que conviene conocer: `DASHBOARD_DATA_DIR` (workspaces por usuario),
+`DASHBOARD_DB_FILE` (la base heredada, que se conserva para no perder el
+histórico de `job_runs`), `DASHBOARD_FRONTEND_DIST` (el `dist/` del paso 5) y
+`ExecStartPre=... migrate`, que aplica las migraciones de Alembic antes de
+arrancar, en cada reinicio.
+
+El primer arranque, a mano:
 
 ```bash
-systemctl daemon-reload
-systemctl enable --now homelab-dashboard.service
+sudo install -m 0644 \
+  /opt/services/homelab/HomelabFrontend/systemd/homelab-dashboard.service \
+  /etc/systemd/system/homelab-dashboard.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now homelab-dashboard.service
 systemctl is-active homelab-dashboard.service
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/   # 200 esperado
 ```
@@ -190,7 +216,7 @@ La primera vez (o tras una base nueva), crea la cuenta admin desde la propia
 VM — la contraseña se pide de forma interactiva, nunca por argumento:
 
 ```bash
-cd /opt/services/homelab-dashboard
+cd /opt/services/homelab/HomelabFrontend
 ./.venv/bin/homelab-dashboard create-admin --email tu-correo@ejemplo.com
 ```
 

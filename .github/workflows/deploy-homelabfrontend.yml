@@ -44,6 +44,20 @@ jobs:
             /etc/systemd/system/homelab-dashboard.service
           sudo systemctl daemon-reload
 
+      # Mismo motivo que el unit: el Caddyfile es fuente de verdad en el repo.
+      # Es imprescindible que llegue solo, porque el que había en la VM tenía
+      # basic_auth y devolvía 401 a todo — incluida la propia SPA y sus
+      # llamadas a /api/*. `caddy validate` antes de recargar evita dejar el
+      # sitio caído si el archivo tiene un error de sintaxis.
+      - name: Install Caddyfile
+        run: |
+          set -e
+          sudo install -m 0644 \
+            /opt/services/homelab/HomelabFrontend/Caddyfile \
+            /etc/caddy/Caddyfile
+          sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          sudo systemctl reload caddy
+
       - name: Restart dashboard service
         run: |
           set -e
@@ -56,3 +70,19 @@ jobs:
           code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/v1/auth/me)
           echo "GET /api/v1/auth/me -> $code"
           test "$code" = "401"
+
+      # Comprobar solo 127.0.0.1 no basta: la primera vez que se desplegó esto,
+      # el servicio respondía 200 en local mientras el sitio público devolvía
+      # 401 a todo, porque Caddy conservaba el basic_auth anterior. La prueba
+      # tiene que pasar por el mismo camino que usa un navegador: TLS + proxy.
+      - name: Verify public HTTPS entrypoint
+        run: |
+          set -e
+          host=$(awk '/cloudapp.azure.com \{/ {print $1}' /opt/services/homelab/HomelabFrontend/Caddyfile)
+          echo "dominio: $host"
+          root=$(curl -s -o /dev/null -w "%{http_code}" "https://$host/")
+          api=$(curl -s -o /dev/null -w "%{http_code}" "https://$host/api/v1/auth/me")
+          echo "GET https://$host/               -> $root  (200 esperado: el SPA)"
+          echo "GET https://$host/api/v1/auth/me -> $api  (401 esperado: sin sesión)"
+          test "$root" = "200"
+          test "$api" = "401"
