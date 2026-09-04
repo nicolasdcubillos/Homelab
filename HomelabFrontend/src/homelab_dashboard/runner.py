@@ -332,13 +332,57 @@ class JobRunner:
             estado, nota = JOB_SUCCESS, ""
         else:
             estado, nota = JOB_ERROR, ""
+        # Solo una corrida completa (código 0) puede tener el JSON final
+        # intacto; una cancelada o fallida puede haber cortado el proceso a
+        # mitad del `print`, así que ni se intenta leerlo.
+        resultado = self._extraer_resultado(archivo.name) if estado == JOB_SUCCESS else None
         try:
-            self._cerrar(run_id, estado, codigo, nota=nota)
+            self._cerrar(run_id, estado, codigo, nota=nota, resultado=resultado)
         finally:
             # Se libera el hueco *después* de persistir, para que nadie vea
             # "libre" mientras la fila todavía dice `running`.
             with self._guard:
                 self._en_curso.pop((user_id, app_name), None)
+
+    #: Lo que imprime ``stockwatcher run`` justo antes del resumen: ver
+    #: ``stockwatcher.cli._cmd_run``. Otros watchers simplemente no lo
+    #: imprimen, así que la búsqueda falla en silencio y `resultado` queda
+    #: en `None` — no hace falta distinguir por `app_name`.
+    _MARCA_RESUMEN = '{\n  "summary"'
+
+    def _extraer_resultado(self, log_path: str) -> str | None:
+        """Lee del log el resumen JSON de la corrida, si lo hay.
+
+        Se guarda solo el subconjunto que la SPA pinta (no el resumen
+        completo) para no inflar la fila con datos que nadie lee de vuelta.
+        """
+        if not log_path:
+            return None
+        ruta = Path(log_path)
+        if not ruta.is_file():
+            return None
+        try:
+            texto = ruta.read_text(encoding="utf-8", errors="replace")
+        except OSError:  # pragma: no cover - defensivo
+            return None
+        inicio = texto.find(self._MARCA_RESUMEN)
+        if inicio == -1:
+            return None
+        try:
+            payload, _ = json.JSONDecoder().raw_decode(texto[inicio:])
+        except (ValueError, TypeError):
+            return None
+        resumen = payload.get("summary") if isinstance(payload, dict) else None
+        if not isinstance(resumen, dict):
+            return None
+        return json.dumps(
+            {
+                "new_hits": resumen.get("new_hits", 0),
+                "stores_scanned": resumen.get("stores_scanned", 0),
+                "stores_failed": resumen.get("stores_failed", 0),
+                "hit_details": resumen.get("hit_details") or [],
+            }
+        )
 
     def _cerrar(
         self,
@@ -347,6 +391,7 @@ class JobRunner:
         codigo: int | None,
         *,
         nota: str = "",
+        resultado: str | None = None,
     ) -> None:
         with self.session_factory() as db:
             run = db.get(JobRun, run_id)
@@ -360,6 +405,8 @@ class JobRunner:
                 run.duration_seconds = (fin - run.started_at).total_seconds()
             if nota:
                 run.skip_reason = nota
+            if resultado is not None:
+                run.result_json = resultado
             db.commit()
 
     # -- cancelación --------------------------------------------------------

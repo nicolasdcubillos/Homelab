@@ -93,6 +93,25 @@ def _canonical(url: str) -> str:
     return url.split("?")[0].rstrip("/").lower()
 
 
+def hit_detail(hit: Hit) -> dict:
+    """Serialize one hit for the run summary (``stockwatcher run`` JSON output).
+
+    Kept flat and self-contained — no lookup against watches/stores needed —
+    so a caller like HomelabDashboard can render a result card straight from
+    this dict without importing anything from this package.
+    """
+    return {
+        "watch": hit.watch_name,
+        "store": hit.store_name,
+        "product": hit.product_title,
+        "variant": hit.variant_label,
+        "price": hit.price_text,
+        "url": hit.product_url,
+        "image": hit.image_url,
+        "color_matched": hit.color_matched,
+    }
+
+
 class Runner:
     """Executes one availability pass."""
 
@@ -183,6 +202,7 @@ class Runner:
         previous = await self.state.get_states(hit.key for hit, _ in observations)
         transition = detect_transitions(observations, previous)
         self.summary.new_hits = len(transition.new_hits)
+        self.summary.hit_details = [hit_detail(hit) for hit in transition.new_hits]
 
         if transition.new_hits:
             await self._notify(transition.new_hits, watches)
@@ -390,4 +410,4 @@ async def run_once(
         await http.aclose()
 
 
-__all__ = ["ProviderError", "Runner", "merge_stores", "run_once"]
+__all__ = ["ProviderError", "Runner", "hit_detail", "merge_stores", "run_once"]

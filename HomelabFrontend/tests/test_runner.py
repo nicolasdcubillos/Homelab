@@ -116,6 +116,76 @@ def _comando(runner, app_name: str, etiqueta: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Resultado estructurado (`hit_details` embebido en el log)
+# ---------------------------------------------------------------------------
+
+
+def test_extraer_resultado_lee_el_resumen_json_del_log(runner, tmp_path):
+    log = tmp_path / "corrida.log"
+    hit = {
+        "watch": "Air Max",
+        "store": "Nike CO",
+        "product": "Nike Air Max 90",
+        "variant": "42",
+        "price": "$450.000",
+        "url": "https://nike.com/p/1",
+        "image": "https://nike.com/img/1.jpg",
+        "color_matched": True,
+    }
+    resumen = {
+        "new_hits": 1,
+        "stores_scanned": 2,
+        "stores_failed": 0,
+        "hit_details": [hit],
+    }
+    log.write_text(
+        "[panel] arrancando\n"
+        + json.dumps({"summary": resumen}, indent=2)
+        + "\n[panel] listo\n",
+        encoding="utf-8",
+    )
+
+    resultado = runner._extraer_resultado(str(log))
+
+    assert resultado is not None
+    datos = json.loads(resultado)
+    assert datos["new_hits"] == 1
+    assert datos["hit_details"] == [hit]
+
+
+def test_extraer_resultado_es_none_sin_json(runner, tmp_path):
+    log = tmp_path / "corrida.log"
+    log.write_text("[panel] arrancando\n[panel] sin novedades\n", encoding="utf-8")
+
+    assert runner._extraer_resultado(str(log)) is None
+
+
+def test_extraer_resultado_es_none_si_falta_el_log(runner, tmp_path):
+    assert runner._extraer_resultado(str(tmp_path / "no-existe.log")) is None
+
+
+def test_cerrar_persiste_el_resultado_estructurado(runner, sesion):
+    usuario = _usuario_listo(sesion)
+    run = JobRun(
+        user_id=usuario.id,
+        app_name="stockwatcher",
+        command_key="run",
+        command_label="Ejecutar",
+        status=JOB_RUNNING,
+        trigger="manual",
+        log_path="dummy.log",
+    )
+    sesion.add(run)
+    sesion.commit()
+
+    runner._cerrar(run.id, JOB_SUCCESS, 0, resultado=json.dumps({"new_hits": 2}))
+
+    sesion.refresh(run)
+    assert run.result_json == json.dumps({"new_hits": 2})
+    assert run.result == {"new_hits": 2}
+
+
+# ---------------------------------------------------------------------------
 # Ejecución básica
 # ---------------------------------------------------------------------------
 

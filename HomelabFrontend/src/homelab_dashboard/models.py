@@ -16,6 +16,7 @@ completa en vez de hacer `.append(...)`.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import uuid
 
 from sqlalchemy import (
@@ -419,7 +420,21 @@ class JobRun(Base):
     )
     #: Motivo cuando `status == "skipped"` (p. ej. ya había un job corriendo).
     skip_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Resultado estructurado (JSON), cuando el watcher lo publica en su
+    #: salida — hoy solo StockWatcher, con el detalle de cada hallazgo nuevo.
+    #: Se guarda aparte del log de texto para no tener que re-parsearlo cada
+    #: vez que la SPA pide una ejecución.
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     @property
     def is_terminal(self) -> bool:
         return self.status != JOB_RUNNING
+
+    @property
+    def result(self) -> dict | None:
+        if not self.result_json:
+            return None
+        try:
+            return json.loads(self.result_json)
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            return None
