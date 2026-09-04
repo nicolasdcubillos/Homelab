@@ -180,6 +180,7 @@ def summarize(hits: Sequence[Hit]) -> dict[str, str]:
         "price": price_text,
         "store": first.store_name,
         "url": first.product_url,
+        "image": first.image_url or "",
     }
 
 

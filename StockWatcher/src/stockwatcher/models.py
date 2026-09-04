@@ -47,6 +47,7 @@ class ProductRef:
     title: str
     price: Decimal | None = None
     handle: str | None = None
+    image_url: str | None = None
     raw: dict = field(default_factory=dict, compare=False, repr=False)
 
 
@@ -94,6 +95,7 @@ class Product:
     gender: Gender = Gender.UNISEX
     store_host: str = ""
     provider: str = ""
+    image_url: str | None = None
 
     @property
     def searchable_text(self) -> str:
@@ -117,6 +119,7 @@ class Hit:
     colorway: str | None = None
     color_matched: bool = True
     country: str = "US"
+    image_url: str | None = None
     detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
