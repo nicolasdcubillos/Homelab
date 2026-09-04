@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.python-version
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Bases de datos y logs: nunca se versionan. `tradinglab.db` es estado en vivo
+# —posiciones abiertas, histórico de operaciones— y no configuración.
+data/
+*.db
+logs/

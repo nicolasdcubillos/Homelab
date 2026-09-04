@@ -50,9 +50,16 @@ def test_cada_motor_exige_su_propio_formato():
         )
     assert "instrumentos" in acciones.value.campos
 
-    # Y cada uno acepta lo suyo.
+    # Y cada uno acepta lo suyo. LUMIBOT exige además una estrategia de su
+    # catálogo: `CONFIG_VALIDA` trae un nombre libre, que solo vale en Freqtrade.
     assert trading.validar_config(
-        trading.LUMIBOT, {**CONFIG_VALIDA, "instrumentos": ["AAPL", "SPY"], "timeframe": "1d"}
+        trading.LUMIBOT,
+        {
+            **CONFIG_VALIDA,
+            "instrumentos": ["AAPL", "SPY"],
+            "timeframe": "1d",
+            "estrategia": "cruce_medias",
+        },
     )["instrumentos"] == ["AAPL", "SPY"]
 
 
@@ -81,6 +88,30 @@ def test_estrategia_no_admite_rutas():
             trading.FREQTRADE, {**CONFIG_VALIDA, "estrategia": "../../etc/passwd"}
         )
     assert "estrategia" in exc.value.campos
+
+
+def test_un_motor_con_catalogo_rechaza_lo_que_no_esta_en_el():
+    """Aceptar un nombre desconocido haría que el bot operase con otra cosa."""
+    valida = {**CONFIG_VALIDA, "instrumentos": ["AAPL"]}
+    with pytest.raises(trading.ErrorDeConfig) as exc:
+        trading.validar_config(trading.LUMIBOT, {**valida, "estrategia": "no_existe"})
+    assert "estrategia" in exc.value.campos
+    # El mensaje tiene que decir cuáles sí valen: se lee en un celular, sin docs.
+    assert "cruce_medias" in exc.value.campos["estrategia"]
+
+
+def test_un_motor_con_catalogo_acepta_los_suyos_y_el_vacio():
+    valida = {**CONFIG_VALIDA, "instrumentos": ["AAPL"]}
+    for nombre in ("", *(e.nombre for e in trading.LUMIBOT.estrategias)):
+        limpia = trading.validar_config(trading.LUMIBOT, {**valida, "estrategia": nombre})
+        assert limpia["estrategia"] == nombre
+
+
+def test_un_motor_sin_catalogo_sigue_aceptando_texto_libre():
+    """Las estrategias de Freqtrade son archivos en la VM: no se pueden listar."""
+    assert not trading.FREQTRADE.estrategias
+    limpia = trading.validar_config(trading.FREQTRADE, {**CONFIG_VALIDA, "estrategia": "MiClase"})
+    assert limpia["estrategia"] == "MiClase"
 
 
 def test_tope_de_instrumentos():

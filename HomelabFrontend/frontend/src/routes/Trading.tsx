@@ -17,7 +17,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 import { useAvisos } from "@/components/Avisos";
 import { Boton } from "@/components/Boton";
@@ -123,12 +123,14 @@ function EditorConfig({
     handleSubmit,
     reset,
     setError,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<DatosConfigTrading>({
     resolver: zodResolver(
       esquemaConfigTrading({
         maxInstrumentos: motor.max_instrumentos,
         timeframes: motor.timeframes,
+        estrategias: motor.estrategias.map((e) => e.nombre),
       }),
     ),
     defaultValues: valores(),
@@ -168,6 +170,22 @@ function EditorConfig({
   });
 
   const opcionesTimeframe = motor.timeframes.map((t) => ({ valor: t, texto: t }));
+
+  // Un motor con catálogo cerrado se ofrece como lista; uno sin él (Freqtrade,
+  // cuyas estrategias son archivos en la VM) sigue pidiendo el nombre a mano.
+  // Escribir «cruce_medias» sin una errata desde el celular no es razonable.
+  const catalogo = motor.estrategias;
+  const opcionesEstrategia = [
+    { valor: "", texto: "La que trae por defecto" },
+    ...catalogo.map((e) => ({ valor: e.nombre, texto: e.etiqueta })),
+  ];
+  // `useWatch` y no `watch()`: este último devuelve una función que el React
+  // Compiler no puede memoizar, y basta usarlo para que deje de optimizar el
+  // componente entero.
+  const estrategiaElegida = useWatch({ control, name: "estrategia" });
+  const descripcionEstrategia =
+    catalogo.find((e) => e.nombre === estrategiaElegida)?.descripcion ??
+    "El motor decide con la estrategia que traiga configurada.";
 
   return (
     <Hoja
@@ -211,15 +229,25 @@ function EditorConfig({
           spellCheck={false}
         />
 
-        <Campo
-          {...register("estrategia")}
-          etiqueta="Estrategia"
-          descripcion="Nombre de la estrategia en el motor. Déjalo vacío para usar la que trae por defecto."
-          error={errors.estrategia?.message}
-          disabled={soloLectura}
-          spellCheck={false}
-        />
-
+        {catalogo.length > 0 ? (
+          <Selector
+            {...register("estrategia")}
+            etiqueta="Estrategia"
+            descripcion={descripcionEstrategia}
+            opciones={opcionesEstrategia}
+            error={errors.estrategia?.message}
+            disabled={soloLectura}
+          />
+        ) : (
+          <Campo
+            {...register("estrategia")}
+            etiqueta="Estrategia"
+            descripcion="Nombre de la estrategia en el motor. Déjalo vacío para usar la que trae por defecto."
+            error={errors.estrategia?.message}
+            disabled={soloLectura}
+            spellCheck={false}
+          />
+        )}
         <Selector
           {...register("timeframe")}
           etiqueta="Marco temporal"

@@ -757,6 +757,14 @@ class EjecucionesAdminOut(Esquema):
 #   motor lo comprueba quien lo conoce.
 
 
+class EstrategiaInfoOut(Esquema):
+    """Una estrategia ofrecida por un motor con catálogo cerrado."""
+
+    nombre: str
+    etiqueta: str
+    descripcion: str
+
+
 class MotorInfoOut(Esquema):
     """Descripción estática de un motor, para que la UI se adapte sola."""
 
@@ -770,6 +778,9 @@ class MotorInfoOut(Esquema):
     timeframes: list[str]
     max_instrumentos: int
     simula_contra: str
+    #: Vacío en los motores cuyas estrategias son archivos en la VM: ahí la UI
+    #: pide el nombre a mano porque nadie puede enumerarlas desde aquí.
+    estrategias: list[EstrategiaInfoOut] = []
 
 
 class EstadoMotorOut(Esquema):

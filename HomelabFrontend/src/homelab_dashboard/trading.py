@@ -104,6 +104,36 @@ class ErrorDeMotor(Exception):
 
 
 @dataclass(frozen=True)
+class EstrategiaSpec:
+    """Una estrategia que el motor sabe construir por nombre."""
+
+    #: Identificador exacto que el motor espera. Va en la configuración.
+    nombre: str
+    #: Cómo se lee en la pantalla.
+    etiqueta: str
+    #: Una línea explicando cuándo compra y cuándo vende.
+    descripcion: str
+
+
+#: Estrategias que trae TradingLab. Duplican los `nombre` de
+#: `tradinglab.estrategia.DISPONIBLES`: son un contrato entre dos procesos, y el
+#: precio de que se desincronicen es que el bot ignore la elección en silencio y
+#: siga con la que traía. Los tests de TradingLab vigilan esta lista.
+_ESTRATEGIAS_LUMIBOT = (
+    EstrategiaSpec(
+        nombre="cruce_medias",
+        etiqueta="Cruce de medias",
+        descripcion="Compra cuando la media corta cruza por encima de la larga.",
+    ),
+    EstrategiaSpec(
+        nombre="reversion_rsi",
+        etiqueta="Reversión RSI",
+        descripcion="Compra en sobreventa y vende al recuperar el nivel medio.",
+    ),
+)
+
+
+@dataclass(frozen=True)
 class MotorSpec:
     """Lo que el dashboard necesita saber de un motor para tratarlo igual."""
 
@@ -126,6 +156,12 @@ class MotorSpec:
     max_instrumentos: int
     #: Broker o exchange contra el que simula.
     simula_contra: str
+    #: Estrategias conocidas, si el motor tiene un catálogo cerrado. Vacío
+    #: significa "no lo tiene": en Freqtrade una estrategia es una clase Python
+    #: que alguien deja en un directorio de la VM, así que el dashboard no puede
+    #: saber cuáles existen y deja el campo abierto. Cuando la lista sí está,
+    #: la UI muestra un selector y el backend rechaza cualquier otro valor.
+    estrategias: tuple[EstrategiaSpec, ...] = ()
 
 
 _PATRON_PAR = re.compile(r"^[A-Z0-9]{2,10}/[A-Z0-9]{2,10}$")
@@ -156,6 +192,7 @@ LUMIBOT = MotorSpec(
     timeframes=("5m", "15m", "30m", "1h", "1d"),
     max_instrumentos=25,
     simula_contra="Alpaca Paper",
+    estrategias=_ESTRATEGIAS_LUMIBOT,
 )
 
 MOTORES: dict[str, MotorSpec] = {
@@ -267,13 +304,24 @@ def validar_config(spec: MotorSpec, datos: dict[str, Any]) -> dict[str, Any]:
             limpio["instrumentos"] = vistos
 
     # --- estrategia ---
+    # Vacío siempre vale: significa "la que traiga el motor por defecto".
     estrategia = str(datos.get("estrategia", "")).strip()
-    if estrategia and not re.match(r"^[A-Za-z][A-Za-z0-9_]{0,63}$", estrategia):
-        # Este valor termina nombrando un archivo/clase en la VM, así que se
-        # restringe a un identificador: sin puntos, sin barras, sin traversal.
-        campos["estrategia"] = (
-            "Solo letras, números y guion bajo, empezando por una letra."
-        )
+    if not estrategia:
+        pass
+    elif spec.estrategias:
+        conocidas = {e.nombre for e in spec.estrategias}
+        if estrategia not in conocidas:
+            # No se acepta un nombre desconocido «por si acaso»: el motor lo
+            # ignoraría y seguiría operando con otra estrategia sin decir nada,
+            # que es la peor forma posible de fallar en algo que mueve dinero.
+            campos["estrategia"] = "Elige una de las estrategias disponibles: " + ", ".join(
+                f"{e.nombre} ({e.etiqueta})" for e in spec.estrategias
+            )
+    elif not re.match(r"^[A-Za-z][A-Za-z0-9_]{0,63}$", estrategia):
+        # Sin catálogo (Freqtrade), este valor termina nombrando un archivo o
+        # clase en la VM, así que se restringe a un identificador: sin puntos,
+        # sin barras, sin traversal.
+        campos["estrategia"] = "Solo letras, números y guion bajo, empezando por una letra."
     limpio["estrategia"] = estrategia
 
     # --- timeframe ---

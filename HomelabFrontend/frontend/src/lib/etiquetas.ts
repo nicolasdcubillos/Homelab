@@ -104,8 +104,8 @@ export const DESCRIPCION_NIVEL_TRADING: Record<NivelTrading, string> = {
 };
 
 export const LADO_OPERACION: Record<LadoOperacion, string> = {
-  long: "Compra",
-  short: "Venta",
+  compra: "Compra",
+  venta: "Venta",
 };
 
 export function etiqueta<T extends string>(

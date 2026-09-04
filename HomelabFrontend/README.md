@@ -36,7 +36,8 @@ toca los datos de otro.
   para todos, y el acceso lo concede un admin por usuario (`viewer` u
   `operator`). Opera **solo en simulación**, con tres barreras independientes
   que impiden estructuralmente el uso de dinero real. Ver
-  [`docs/trading.md`](docs/trading.md).
+  [`docs/trading.md`](docs/trading.md) y, para el motor de acciones,
+  [`../TradingLab/`](../TradingLab/README.md).
 
 ## Arquitectura
 

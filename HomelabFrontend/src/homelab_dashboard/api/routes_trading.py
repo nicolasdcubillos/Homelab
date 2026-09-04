@@ -117,6 +117,12 @@ def _info(spec: trading.MotorSpec) -> schemas.MotorInfoOut:
         timeframes=list(spec.timeframes),
         max_instrumentos=spec.max_instrumentos,
         simula_contra=spec.simula_contra,
+        estrategias=[
+            schemas.EstrategiaInfoOut(
+                nombre=e.nombre, etiqueta=e.etiqueta, descripcion=e.descripcion
+            )
+            for e in spec.estrategias
+        ],
     )
 
 

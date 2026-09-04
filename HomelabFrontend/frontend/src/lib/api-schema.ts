@@ -1188,6 +1188,18 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /**
+         * EstrategiaInfoOut
+         * @description Una estrategia ofrecida por un motor con cat�logo cerrado.
+         */
+        EstrategiaInfoOut: {
+            /** Descripcion */
+            descripcion: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Nombre */
+            nombre: string;
+        };
         /** HoldingIn */
         HoldingIn: {
             /** Avg Cost */
@@ -1299,6 +1311,11 @@ export interface components {
             display_name: string;
             /** Ejemplo Instrumento */
             ejemplo_instrumento: string;
+            /**
+             * Estrategias
+             * @default []
+             */
+            estrategias: components["schemas"]["EstrategiaInfoOut"][];
             /** Max Instrumentos */
             max_instrumentos: number;
             /** Proyecto */

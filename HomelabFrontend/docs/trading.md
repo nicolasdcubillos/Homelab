@@ -145,7 +145,8 @@ cual: «Encendimos X, pero aún no responde».
 ## 5. Lo que TradingLab debe proveer
 
 `AdaptadorTradingLab` lee un SQLite en la ruta de `DASHBOARD_TRADINGLAB_DB`.
-El paquete hermano `TradingLab/` debe mantener estas dos tablas:
+El paquete hermano [`TradingLab/`](../../TradingLab/README.md) mantiene estas dos
+tablas:
 
 **`estado_motor`** — una fila, el latido del proceso:
 
@@ -164,6 +165,37 @@ El paquete hermano `TradingLab/` debe mantener estas dos tablas:
 TradingLab debe leer `enabled` de `trading_bot_config` en cada ciclo y detenerse
 solo cuando esté en `false`.
 
+### Vocabulario de `lado`
+
+`lado` admite exactamente **`compra`** y **`venta`**, y no el vocabulario del
+motor que tocó responder. `AdaptadorFreqtrade` traduce el suyo (`_a_operacion`
+en `trading.py`) y TradingLab lo garantiza con un `CHECK` en la tabla. Es lo que
+permite que `LADO_OPERACION` en `lib/etiquetas.ts` sea un mapa de dos entradas:
+un valor fuera de esos dos aparecería en la tabla de operaciones como un guion,
+sin ningún error visible que explicara por qué.
+
+### El latido va separado del ciclo de trading
+
+Es la consecuencia práctica de que la tolerancia sean **90 minutos** mientras el
+`timeframe` puede ser `1d`. Si el motor solo latiera al evaluar, un bot en velas
+diarias aparecería como caído 22 horas de cada 24.
+
+TradingLab late **cada minuto** pase lo que pase —también en pausa, también tras
+un error— y evalúa el mercado cada `timeframe`. Efecto secundario deseable: el
+interruptor del panel surte efecto en menos de un minuto aunque el marco sea
+diario.
+
+Consecuencia para quien escriba otro motor: **el latido no es la señal de «hice
+algo», es la señal de «sigo vivo»**. Escribirlo solo cuando hay trabajo real es
+el error a evitar.
+
+### Marcas de tiempo
+
+ISO-8601 en UTC con desfase explícito (`+00:00`, nunca `Z`). El dashboard ordena
+con `ORDER BY abierta_en DESC`, que es un orden **de texto**: solo en ese formato
+coincide con el cronológico. Además `datetime.fromisoformat` no aceptó el sufijo
+`Z` hasta Python 3.11 y el dashboard declara soportar 3.10.
+
 ---
 
 ## 6. Añadir un motor
@@ -175,6 +207,31 @@ necesitan cambios: la pantalla se adapta a `MotorInfoOut`, que declara el
 término singular y plural, el ejemplo de instrumento, el máximo y los marcos
 temporales.
 
+### El catálogo de estrategias es opcional a propósito
+
+`MotorSpec.estrategias` puede ir vacío, y esa diferencia es visible en la
+pantalla:
+
+| | Catálogo declarado | Catálogo vacío |
+|---|---|---|
+| Motor | TradingLab | Freqtrade |
+| Campo en la UI | Selector | Texto libre |
+| Validación | El nombre debe estar en la lista | Identificador (`^[A-Za-z][A-Za-z0-9_]{0,63}$`) |
+
+La razón es que en Freqtrade una estrategia es una clase Python que alguien deja
+en un directorio de la VM: el dashboard **no puede** saber cuáles existen, así
+que no finge saberlo. TradingLab, en cambio, las construye por nombre desde
+`DISPONIBLES`, que sí es una lista cerrada.
+
+Cuando la lista existe se rechaza cualquier otro valor en vez de aceptarlo «por
+si acaso». Un nombre desconocido no aborta al motor: lo ignora y sigue operando
+con la estrategia que traía, que es la peor forma posible de fallar en algo que
+mueve dinero —aunque sea simulado— porque no produce ningún error visible.
+
+Esa lista está escrita dos veces, en dos procesos que no se importan entre sí
+(`_ESTRATEGIAS_LUMIBOT` aquí y `DISPONIBLES` en TradingLab). Es duplicación
+deliberada, y hay un test en cada lado vigilándola.
+
 ---
 
 ## 7. Operación en la VM
@@ -185,14 +242,39 @@ Estos puntos no son opcionales; el bot comparte máquina con el dashboard.
   más el dashboard. `PortfolioWatcher/infra/variables.tf` pasa a
   `Standard_B2as_v2` (2 vCPU, **8 GiB**, ≈ 54,90 USD/mes en East US, PAYG),
   que cabe en el presupuesto de 150 USD/mes. Requiere `terraform apply`.
+- **Espacio en disco.** Lumibot arrastra **más de cincuenta dependencias
+  directas** (`pyarrow`, `polars`, `scipy`, `boto3`, `ccxt`, `duckdb`,
+  `matplotlib`…) y ocupa **varios cientos de megabytes**. El dimensionado hay que
+  revisarlo en disco, no solo en RAM.
 - **Límite de memoria.** Cada unidad `systemd` necesita `MemoryMax=`. Sin él, un
   motor con fuga de memoria tumba el dashboard entero.
-- **Secretos.** `DASHBOARD_FREQTRADE_USER` y `DASHBOARD_FREQTRADE_PASSWORD` van
-  en el entorno de la unidad, **nunca en la base de datos**.
+- **Directorio de trabajo.** La unidad de TradingLab necesita `WorkingDirectory=`:
+  Lumibot escribe sus logs relativos al CWD, y bajo systemd el CWD es `/`.
+- **Señal de parada.** Lumibot instala su propio manejador de **SIGINT**, no de
+  SIGTERM. TradingLab atiende ambas, pero conviene `KillSignal=SIGINT` para no
+  depender de ello.
+- **Escaneo de disco al importar.** Importar `lumibot.credentials` busca un
+  `.env` recorriendo el sistema de archivos. Se apaga con
+  `Environment=LUMIBOT_DISABLE_DOTENV=1`.
+- **Secretos.** `DASHBOARD_FREQTRADE_USER`, `DASHBOARD_FREQTRADE_PASSWORD`,
+  `ALPACA_API_KEY` y `ALPACA_API_SECRET` van en el entorno de la unidad, **nunca
+  en la base de datos**: la configuración compartida la puede leer cualquier
+  usuario autorizado desde el panel.
 - **Exposición.** La documentación de Freqtrade pide explícitamente no exponer
   su API a internet: `listen_ip_address: 127.0.0.1`.
 - **Límites de instrumentos.** Freqtrade 15, TradingLab 25. No son arbitrarios:
   cada instrumento cuesta memoria y llamadas en una máquina compartida.
+
+### Arrancar antes de tener credenciales
+
+`tradinglab correr --simulado` opera contra precios generados con una semilla
+fija, sin Alpaca y sin credenciales. Verifica el contrato entero —latidos,
+operaciones, la pantalla— salvo la última milla, y permite dejar el módulo
+funcionando mientras se tramitan las claves.
+
+Para validar el camino real en la VM: `tradinglab doctor`, que comprueba
+importación de Lumibot, credenciales, ambas bases y la TRM **sin enviar ninguna
+orden**.
 
 ### Implicación tributaria (Colombia)
 

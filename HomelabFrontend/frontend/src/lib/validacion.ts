@@ -153,7 +153,23 @@ export type DatosPerfilRiesgo = z.infer<typeof esquemaPerfilRiesgo>;
  * definiciones de lo mismo que con el tiempo dejarían de coincidir. Lo que sí
  * se comprueba en el cliente es todo lo que se puede expresar sin copiarla.
  */
-export function esquemaConfigTrading(limites: { maxInstrumentos: number; timeframes: string[] }) {
+export function esquemaConfigTrading(limites: {
+  maxInstrumentos: number;
+  timeframes: string[];
+  estrategias?: string[];
+}) {
+  // Con catálogo la lista manda; sin él solo se comprueba la forma, porque las
+  // estrategias son archivos que viven en la VM y nadie puede enumerarlas.
+  const catalogo = limites.estrategias ?? [];
+  const validaEstrategia =
+    catalogo.length > 0
+      ? (v: string) => catalogo.includes(v)
+      : (v: string) => /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(v);
+  const errorEstrategia =
+    catalogo.length > 0
+      ? "Elige una de las estrategias disponibles."
+      : "Solo letras, números y guion bajo, empezando por una letra.";
+
   const rango = (min: number, max: number, mensaje: string) =>
     z
       .string()
@@ -176,10 +192,7 @@ export function esquemaConfigTrading(limites: { maxInstrumentos: number; timefra
       estrategia: z
         .string()
         .trim()
-        .refine(
-          (v) => v === "" || /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(v),
-          "Solo letras, números y guion bajo, empezando por una letra.",
-        ),
+        .refine((v) => v === "" || validaEstrategia(v), errorEstrategia),
       timeframe: z.string().refine((v) => limites.timeframes.includes(v), "Elige un marco temporal."),
       capital_simulado: rango(100, 10_000_000, "El capital simulado debe estar entre 100 y 10.000.000."),
       max_posiciones_abiertas: z
