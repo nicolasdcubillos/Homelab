@@ -306,13 +306,30 @@ export function AdminUsuario() {
               disabled={cambiarEstado.isPending}
             />
           </Fila>
-          <FilaValor
-            tono={user.status === "suspended" ? "normal" : "peligro"}
-            etiqueta={user.status === "suspended" ? "Reactivar cuenta" : "Suspender cuenta"}
-            onClick={() =>
-              void cambiarEstadoCuenta(user.status === "suspended" ? "active" : "suspended")
-            }
-          />
+          {user.status === "pending" ? (
+            <>
+              <FilaValor
+                tono="normal"
+                etiqueta="Aprobar cuenta"
+                descripcion="Activa la cuenta para que pueda configurar y ejecutar con normalidad."
+                onClick={() => void cambiarEstadoCuenta("active")}
+              />
+              <FilaValor
+                tono="peligro"
+                etiqueta="Rechazar cuenta"
+                descripcion="Suspende la cuenta sin activarla."
+                onClick={() => void cambiarEstadoCuenta("suspended")}
+              />
+            </>
+          ) : (
+            <FilaValor
+              tono={user.status === "suspended" ? "normal" : "peligro"}
+              etiqueta={user.status === "suspended" ? "Reactivar cuenta" : "Suspender cuenta"}
+              onClick={() =>
+                void cambiarEstadoCuenta(user.status === "suspended" ? "active" : "suspended")
+              }
+            />
+          )}
         </Lista>
 
         <Lista titulo="Zona de riesgo">
