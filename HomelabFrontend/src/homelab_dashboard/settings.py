@@ -74,6 +74,23 @@ class Settings:
     max_concurrent_jobs: int
     default_timezone: str
 
+    # ------------------------------------------------------------- trading
+    #: Dónde escucha la API REST de Freqtrade. Por defecto `127.0.0.1` porque
+    #: la propia documentación de Freqtrade insiste en no exponer esa API a
+    #: internet; el dashboard le habla desde la misma máquina.
+    freqtrade_url: str
+    #: Credenciales de la API de Freqtrade. Son secretos operativos: llegan por
+    #: el entorno de la unit systemd, nunca se guardan en la base ni se
+    #: devuelven por la API (ver `routes_trading.py`).
+    freqtrade_user: str
+    freqtrade_password: str
+    #: Base de estado que escribe la app hermana TradingLab (motor de acciones).
+    #: El dashboard solo la **lee**.
+    tradinglab_db: Path
+    #: Tope de espera al hablar con un motor. Corto a propósito: un motor caído
+    #: no debe dejar colgada una petición de la UI.
+    trading_timeout_seconds: int
+
     @property
     def users_dir(self) -> Path:
         """Raíz de los workspaces por usuario (`<data_dir>/users`)."""
@@ -109,6 +126,10 @@ def load_settings(**overrides) -> Settings:
     db_file = os.environ.get("DASHBOARD_DB_FILE", "").strip()
     db_path = Path(db_file).expanduser() if db_file else data_dir / "dashboard.db"
 
+    # Mismo criterio para la base de TradingLab: derivada de `data_dir` salvo
+    # que se apunte explícitamente a otra ruta.
+    tradinglab_db = os.environ.get("DASHBOARD_TRADINGLAB_DB", "").strip()
+
     settings = Settings(
         apps_file=Path(_env_str("DASHBOARD_APPS_FILE", "apps.yaml")).expanduser(),
         data_dir=data_dir,
@@ -124,6 +145,13 @@ def load_settings(**overrides) -> Settings:
         scheduler_tick_seconds=_env_int("DASHBOARD_SCHEDULER_TICK_SECONDS", 30),
         max_concurrent_jobs=_env_int("DASHBOARD_MAX_CONCURRENT_JOBS", 4),
         default_timezone=_env_str("DASHBOARD_DEFAULT_TIMEZONE", DEFAULT_TIMEZONE),
+        freqtrade_url=_env_str("DASHBOARD_FREQTRADE_URL", "http://127.0.0.1:8080"),
+        freqtrade_user=_env_str("DASHBOARD_FREQTRADE_USER", ""),
+        freqtrade_password=_env_str("DASHBOARD_FREQTRADE_PASSWORD", ""),
+        tradinglab_db=(
+            Path(tradinglab_db).expanduser() if tradinglab_db else data_dir / "tradinglab.db"
+        ),
+        trading_timeout_seconds=_env_int("DASHBOARD_TRADING_TIMEOUT_SECONDS", 5),
     )
 
     if overrides:

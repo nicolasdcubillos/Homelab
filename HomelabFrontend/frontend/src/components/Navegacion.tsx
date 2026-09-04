@@ -17,6 +17,7 @@ import {
   IconoAjustes,
   IconoInicio,
   IconoPortafolio,
+  IconoTrading,
   IconoVigilancia,
 } from "./iconos";
 
@@ -34,16 +35,52 @@ export const SECCIONES: Seccion[] = [
   { ruta: "/ajustes", texto: "Ajustes", Icono: IconoAjustes },
 ];
 
+/**
+ * Trading no está en `SECCIONES` porque no es de primer nivel para todos: solo
+ * aparece si el backend concedió acceso. Se inserta junto a Portafolio, que es
+ * la otra sección de dinero, en vez de al final.
+ */
+export const SECCION_TRADING: Seccion = {
+  ruta: "/trading",
+  texto: "Trading",
+  Icono: IconoTrading,
+};
+
 export const SECCION_ADMIN: Seccion = {
   ruta: "/admin",
   texto: "Administración",
   Icono: IconoAdmin,
 };
 
+function secciones(trading: boolean): Seccion[] {
+  if (!trading) return SECCIONES;
+  const posicion = SECCIONES.findIndex((s) => s.ruta === "/portafolio") + 1;
+  return [...SECCIONES.slice(0, posicion), SECCION_TRADING, ...SECCIONES.slice(posicion)];
+}
+
+function esActiva(ruta: string, pathname: string): boolean {
+  return ruta === "/" ? pathname === "/" : pathname.startsWith(ruta);
+}
+
 /* ------------------------------------------------------------------ móvil -- */
 
-export function BarraPestanas({ admin }: { admin: boolean }) {
+/**
+ * Con trading y administración la barra llega a siete pestañas. En un teléfono
+ * de 375 px eso deja unos 53 px por pestaña, menos de lo que ocupa la palabra
+ * «Vigilancias». El `min-w-0` en el elemento y el `truncate` en la etiqueta
+ * hacen que el texto se recorte en vez de empujar y romper la retícula: se
+ * degrada, no se rompe. El icono sigue distinguiendo cada sección.
+ */
+export function BarraPestanas({ admin, trading }: { admin: boolean; trading: boolean }) {
   const { pathname } = useLocation();
+  const lista = secciones(trading);
+
+  const clases = (activa: boolean) =>
+    cx(
+      "flex min-h-[3.25rem] flex-col items-center justify-center gap-0.5 px-0.5 pt-1.5 pb-1",
+      "transition-colors duration-150",
+      activa ? "text-accent" : "text-muted hover:text-fg",
+    );
 
   return (
     <nav
@@ -54,39 +91,31 @@ export function BarraPestanas({ admin }: { admin: boolean }) {
       )}
     >
       <ul className="flex items-stretch">
-        {SECCIONES.map(({ ruta, texto, Icono }) => {
-          const activa = ruta === "/" ? pathname === "/" : pathname.startsWith(ruta);
+        {lista.map(({ ruta, texto, Icono }) => {
+          const activa = esActiva(ruta, pathname);
           return (
-            <li key={ruta} className="flex-1">
-              <NavLink
-                to={ruta}
-                aria-current={activa ? "page" : undefined}
-                className={cx(
-                  "flex min-h-[3.25rem] flex-col items-center justify-center gap-0.5 px-1 pt-1.5 pb-1",
-                  "transition-colors duration-150",
-                  activa ? "text-accent" : "text-muted hover:text-fg",
-                )}
-              >
-                <Icono className="size-6" />
-                <span className="text-caption2 leading-none font-medium">{texto}</span>
+            <li key={ruta} className="min-w-0 flex-1">
+              <NavLink to={ruta} aria-current={activa ? "page" : undefined} className={clases(activa)}>
+                <Icono className="size-6 shrink-0" />
+                <span className="w-full truncate text-center text-caption2 leading-none font-medium">
+                  {texto}
+                </span>
               </NavLink>
             </li>
           );
         })}
 
         {admin && (
-          <li className="flex-1">
+          <li className="min-w-0 flex-1">
             <NavLink
               to={SECCION_ADMIN.ruta}
               aria-current={pathname.startsWith("/admin") ? "page" : undefined}
-              className={cx(
-                "flex min-h-[3.25rem] flex-col items-center justify-center gap-0.5 px-1 pt-1.5 pb-1",
-                "transition-colors duration-150",
-                pathname.startsWith("/admin") ? "text-accent" : "text-muted hover:text-fg",
-              )}
+              className={clases(pathname.startsWith("/admin"))}
             >
-              <SECCION_ADMIN.Icono className="size-6" />
-              <span className="text-caption2 leading-none font-medium">Admin</span>
+              <SECCION_ADMIN.Icono className="size-6 shrink-0" />
+              <span className="w-full truncate text-center text-caption2 leading-none font-medium">
+                Admin
+              </span>
             </NavLink>
           </li>
         )}
@@ -99,10 +128,12 @@ export function BarraPestanas({ admin }: { admin: boolean }) {
 
 export function BarraLateral({
   admin,
+  trading,
   email,
   pie,
 }: {
   admin: boolean;
+  trading: boolean;
   email: string;
   pie: React.ReactNode;
 }) {
@@ -148,12 +179,7 @@ export function BarraLateral({
 
       <nav aria-label="Secciones" className="min-h-0 flex-1 overflow-y-auto px-3">
         <ul className="space-y-0.5">
-          {SECCIONES.map((seccion) =>
-            enlace(
-              seccion,
-              seccion.ruta === "/" ? pathname === "/" : pathname.startsWith(seccion.ruta),
-            ),
-          )}
+          {secciones(trading).map((seccion) => enlace(seccion, esActiva(seccion.ruta, pathname)))}
         </ul>
 
         {admin && (

@@ -139,3 +139,86 @@ export const esquemaPerfilRiesgo = z.object({
     }, "Escribe un número de días entre 1 y 365."),
 });
 export type DatosPerfilRiesgo = z.infer<typeof esquemaPerfilRiesgo>;
+
+/**
+ * Configuración de un bot de trading.
+ *
+ * Es una fábrica y no una constante porque los límites dependen del motor:
+ * Freqtrade y TradingLab admiten distinta cantidad de instrumentos y distintos
+ * marcos temporales, y la API los declara en `MotorInfoOut` justamente para que
+ * la interfaz no tenga que saberlos de memoria.
+ *
+ * La *forma* de cada instrumento (`BTC/USDT` frente a `AAPL`) se deja al
+ * backend a propósito: duplicar aquí esa expresión regular sería tener dos
+ * definiciones de lo mismo que con el tiempo dejarían de coincidir. Lo que sí
+ * se comprueba en el cliente es todo lo que se puede expresar sin copiarla.
+ */
+export function esquemaConfigTrading(limites: { maxInstrumentos: number; timeframes: string[] }) {
+  const rango = (min: number, max: number, mensaje: string) =>
+    z
+      .string()
+      .trim()
+      .min(1, mensaje)
+      .refine((v) => {
+        const n = Number(v.replace(",", "."));
+        return !Number.isNaN(n) && n >= min && n <= max;
+      }, mensaje);
+
+  return z
+    .object({
+      instrumentos: z
+        .string()
+        .trim()
+        .refine(
+          (v) => separarInstrumentos(v).length <= limites.maxInstrumentos,
+          `Máximo ${limites.maxInstrumentos}: el bot corre en una VM compartida y cada uno cuesta memoria y llamadas.`,
+        ),
+      estrategia: z
+        .string()
+        .trim()
+        .refine(
+          (v) => v === "" || /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(v),
+          "Solo letras, números y guion bajo, empezando por una letra.",
+        ),
+      timeframe: z.string().refine((v) => limites.timeframes.includes(v), "Elige un marco temporal."),
+      capital_simulado: rango(100, 10_000_000, "El capital simulado debe estar entre 100 y 10.000.000."),
+      max_posiciones_abiertas: z
+        .string()
+        .trim()
+        .refine((v) => {
+          const n = Number(v);
+          return Number.isInteger(n) && n >= 1 && n <= limites.maxInstrumentos;
+        }, `Debe estar entre 1 y ${limites.maxInstrumentos}.`),
+      stop_loss_pct: rango(0.1, 90, "El stop loss debe estar entre 0,1 y 90."),
+      take_profit_pct: rango(0.1, 500, "El take profit debe estar entre 0,1 y 500."),
+      max_perdida_diaria_pct: rango(0.1, 100, "La pérdida diaria máxima debe estar entre 0,1 y 100."),
+    })
+    .refine(
+      (datos) =>
+        Number(datos.stop_loss_pct.replace(",", ".")) <=
+        Number(datos.max_perdida_diaria_pct.replace(",", ".")),
+      {
+        path: ["max_perdida_diaria_pct"],
+        message:
+          "La pérdida diaria máxima no puede ser menor que el stop loss: el freno nunca llegaría a activarse.",
+      },
+    );
+}
+
+export type DatosConfigTrading = z.infer<ReturnType<typeof esquemaConfigTrading>>;
+
+/**
+ * Convierte el campo de texto libre en la lista que espera la API.
+ *
+ * Se acepta separar por comas, espacios o saltos de línea porque quien pega
+ * una lista desde otro lado no debería tener que reformatearla. El duplicado
+ * se elimina aquí para que el contador que ve el usuario cuadre con lo que se
+ * va a guardar.
+ */
+export function separarInstrumentos(texto: string): string[] {
+  const partes = texto
+    .split(/[\s,;]+/)
+    .map((parte) => parte.trim().toUpperCase())
+    .filter(Boolean);
+  return [...new Set(partes)];
+}

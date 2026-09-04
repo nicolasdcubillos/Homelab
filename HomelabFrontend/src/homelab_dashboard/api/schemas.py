@@ -121,6 +121,10 @@ class UsuarioOut(EsquemaORM):
     timezone: str
     created_at: dt.datetime
     last_login_at: dt.datetime | None
+    #: Nivel sobre el módulo de trading, o `null` si no tiene acceso. Viaja en
+    #: la sesión para que la navegación sepa si ofrecer la sección sin tener
+    #: que pedir una ruta que le respondería 404.
+    trading_level: Literal["viewer", "operator"] | None = None
 
 
 class SesionOut(Esquema):
@@ -736,3 +740,152 @@ class EjecucionAdminOut(EjecucionOut):
 
 class EjecucionesAdminOut(Esquema):
     items: list[EjecucionAdminOut]
+
+
+# ---------------------------------------------------------------------------
+# Trading
+# ---------------------------------------------------------------------------
+#
+# El módulo de trading opera sobre un recurso compartido, así que sus esquemas
+# tienen dos particularidades que no aparecen en el resto de la API:
+#
+# - `version` viaja de ida y vuelta para el bloqueo optimista. No es un dato
+#   informativo: si el cliente no lo devuelve, no puede guardar.
+# - La validación fina (formato de par/ticker, rangos, coherencia entre stop y
+#   freno diario) **no** vive aquí sino en `trading.validar_config`, porque
+#   depende del motor. Pydantic solo comprueba la forma; el contrato de cada
+#   motor lo comprueba quien lo conoce.
+
+
+class MotorInfoOut(Esquema):
+    """Descripción estática de un motor, para que la UI se adapte sola."""
+
+    bot_name: str
+    display_name: str
+    proyecto: str
+    clase_activo: str
+    termino_singular: str
+    termino_plural: str
+    ejemplo_instrumento: str
+    timeframes: list[str]
+    max_instrumentos: int
+    simula_contra: str
+
+
+class EstadoMotorOut(Esquema):
+    alcanzable: bool
+    corriendo: bool
+    detalle: str
+    modo: str
+    posiciones_abiertas: int
+    version: str | None = None
+
+
+class ConfigTradingOut(Esquema):
+    instrumentos: list[str]
+    estrategia: str
+    timeframe: str
+    capital_simulado: float
+    max_posiciones_abiertas: int
+    stop_loss_pct: float
+    take_profit_pct: float
+    max_perdida_diaria_pct: float
+
+
+class ConfigTradingIn(Esquema):
+    """Configuración propuesta.
+
+    `extra="forbid"` (heredado de `Esquema`) hace aquí un trabajo de seguridad
+    real y no solo de higiene: es lo que impide que llegue un `dry_run: false`
+    o una clave de API colada en el cuerpo. `trading.validar_config` vuelve a
+    rechazarlas explícitamente por si este esquema cambiara.
+    """
+
+    instrumentos: list[str] = Field(default_factory=list, max_length=50)
+    estrategia: str = Field(default="", max_length=64)
+    timeframe: str = Field(max_length=8)
+    capital_simulado: float
+    max_posiciones_abiertas: int
+    stop_loss_pct: float
+    take_profit_pct: float
+    max_perdida_diaria_pct: float
+    #: Versión que el cliente leyó. Si no coincide con la almacenada, la API
+    #: responde 409 en vez de pisar el cambio de otro usuario.
+    version: int = Field(ge=1)
+
+
+class BotTradingOut(Esquema):
+    """Todo lo que la UI necesita de un motor en una sola respuesta."""
+
+    motor: MotorInfoOut
+    enabled: bool
+    modo: str
+    config: ConfigTradingOut
+    version: int
+    estado: EstadoMotorOut
+    updated_by_email: str
+    updated_at: dt.datetime | None = None
+
+
+class BotsTradingOut(Esquema):
+    items: list[BotTradingOut]
+    #: Nivel de quien pregunta, para que la UI decida si pinta los controles en
+    #: modo lectura sin tener que deducirlo de un 403.
+    nivel: Literal["viewer", "operator"]
+
+
+class InterruptorIn(Esquema):
+    enabled: bool
+    version: int = Field(ge=1)
+
+
+class OperacionOut(Esquema):
+    instrumento: str
+    lado: str
+    cantidad: float
+    precio_entrada: float
+    precio_salida: float | None
+    pnl_absoluto: float | None
+    pnl_pct: float | None
+    abierta_en: str | None
+    cerrada_en: str | None
+    abierta: bool
+
+
+class OperacionesOut(Esquema):
+    items: list[OperacionOut]
+    #: `False` cuando el motor no respondió. La UI muestra "sin datos" en vez
+    #: de "cero operaciones", que significan cosas distintas.
+    disponible: bool = True
+
+
+class RendimientoOut(Esquema):
+    capital_inicial: float
+    capital_actual: float
+    pnl_absoluto: float
+    pnl_pct: float
+    operaciones_cerradas: int
+    ganadoras: int
+    perdedoras: int
+    win_rate: float | None
+    mejor_pct: float | None
+    peor_pct: float | None
+    costos_simulados: float
+    disponible: bool = True
+
+
+class AccesoTradingOut(EsquemaORM):
+    user_id: str
+    email: str
+    level: Literal["viewer", "operator"]
+    granted_by_email: str
+    granted_at: dt.datetime
+
+
+class AccesosTradingOut(Esquema):
+    items: list[AccesoTradingOut]
+
+
+class AccesoTradingIn(Esquema):
+    level: Literal["viewer", "operator"]
+

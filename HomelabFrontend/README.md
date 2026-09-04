@@ -30,6 +30,13 @@ toca los datos de otro.
 - **Panel de administración**: lista de usuarios con búsqueda/orden, ficha de
   cada uno (qué tiene configurado, sus ejecuciones), acciones (activar,
   suspender, cambiar contraseña, promover, eliminar) y métricas globales.
+- **Trading simulado**: dos motores (Freqtrade para cripto, TradingLab para
+  acciones y ETFs) con estado, configuración, rendimiento y operaciones. A
+  diferencia del resto de la app, **el bot es compartido**: hay uno por motor
+  para todos, y el acceso lo concede un admin por usuario (`viewer` u
+  `operator`). Opera **solo en simulación**, con tres barreras independientes
+  que impiden estructuralmente el uso de dinero real. Ver
+  [`docs/trading.md`](docs/trading.md).
 
 ## Arquitectura
 
@@ -134,6 +141,11 @@ homelab-dashboard create-admin --email tu-correo@ejemplo.com
 | `DASHBOARD_SCHEDULER_TICK_SECONDS`  | `30`                        | Frecuencia con la que el scheduler revisa programaciones                |
 | `DASHBOARD_MAX_CONCURRENT_JOBS`     | `4`                         | Tope global de subprocess simultáneos                                   |
 | `DASHBOARD_DEFAULT_TIMEZONE`        | `America/Bogota`            | Zona horaria por defecto para usuarios nuevos                          |
+| `DASHBOARD_FREQTRADE_URL`           | `http://127.0.0.1:8080`     | API REST de Freqtrade. No exponerla a internet                          |
+| `DASHBOARD_FREQTRADE_USER`          | —                           | Usuario de la API de Freqtrade (auth Basic)                             |
+| `DASHBOARD_FREQTRADE_PASSWORD`      | —                           | Contraseña de la API de Freqtrade. Solo en el entorno, nunca en la base |
+| `DASHBOARD_TRADINGLAB_DB`           | `<data_dir>/tradinglab.db`  | SQLite de TradingLab, que el dashboard lee en solo lectura              |
+| `DASHBOARD_TRADING_TIMEOUT_SECONDS` | `5`                         | Tope de espera al consultar un motor de trading                         |
 
 ## Tests y lint
 
@@ -163,3 +175,7 @@ reales a Azure ni SSH a ninguna VM.
   entre el dashboard y los repos hermanos: qué acepta cada CLI, la
   precedencia de destinos de notificación, y el historial de los seis
   hallazgos que motivaron cambios en esos repos (ya resueltos).
+- [`docs/trading.md`](docs/trading.md) — contrato del módulo de trading: por qué
+  el bot es compartido, la asimetría entre un motor imperativo y otro
+  declarativo, las tres barreras contra el dinero real, el modelo de permisos y
+  lo que debe proveer TradingLab.

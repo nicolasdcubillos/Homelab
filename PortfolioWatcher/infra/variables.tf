@@ -57,9 +57,14 @@ variable "allowed_web_source_address" {
 }
 
 variable "vm_size" {
-  description = "VM size. B2s is the default requested: 2 vCPU / 4 GiB RAM, burstable, cheap."
+  description = <<-EOT
+    VM size. B2as_v2 gives 2 vCPU / 8 GiB RAM, burstable (~USD 55/month PAYG in
+    East US). The extra 4 GiB over the original B2s is what makes room for the
+    trading engines: Freqtrade alone wants 2 GiB once TA-Lib is loaded, and the
+    dashboard plus the watchers already used most of a 4 GiB box.
+  EOT
   type        = string
-  default     = "Standard_B2s"
+  default     = "Standard_B2as_v2"
 }
 
 variable "os_disk_size_gb" {

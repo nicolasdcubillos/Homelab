@@ -20,8 +20,14 @@ const raizProyecto = resolve(aqui, "..", "..");
 const destino = resolve(aqui, "..", "src", "lib", "api-schema.ts");
 
 function interpreteDePython() {
-  const local = resolve(raizProyecto, ".venv", "bin", "python");
-  if (existsSync(local)) return local;
+  // `bin` en POSIX, `Scripts` en Windows: el venv del repo sirve en ambos.
+  for (const relativo of [
+    [".venv", "bin", "python"],
+    [".venv", "Scripts", "python.exe"],
+  ]) {
+    const candidato = resolve(raizProyecto, ...relativo);
+    if (existsSync(candidato)) return candidato;
+  }
   return process.env.PYTHON ?? "python3";
 }
 

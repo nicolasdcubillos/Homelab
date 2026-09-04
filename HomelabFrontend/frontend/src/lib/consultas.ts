@@ -14,18 +14,25 @@ import {
 
 import { api, ApiError } from "./api";
 import type {
+  AccesosTrading,
+  AccesoTrading,
   App,
   Apps,
   Bitacora,
+  BotTrading,
+  BotsTrading,
+  ConfigTradingEntrada,
   Ejecuciones,
   EjecucionesAdmin,
   Log,
   Metricas,
   Notificaciones,
+  OperacionesTrading,
   Portafolio,
   Preview,
   Programaciones,
   ReadinessGlobal,
+  RendimientoTrading,
   Sesion,
   UsuarioDetalle,
   UsuariosAdmin,
@@ -49,6 +56,10 @@ export const claves = {
   adminEjecuciones: (filtros?: Record<string, unknown>) =>
     ["admin", "ejecuciones", filtros ?? {}] as const,
   adminBitacora: (filtros?: Record<string, unknown>) => ["admin", "bitacora", filtros ?? {}] as const,
+  trading: ["trading"] as const,
+  tradingOperaciones: (bot: string) => ["trading", "operaciones", bot] as const,
+  tradingRendimiento: (bot: string) => ["trading", "rendimiento", bot] as const,
+  tradingAccesos: ["trading", "accesos"] as const,
 };
 
 /** Lo que queda obsoleto cuando cambia la configuración de un usuario. */
@@ -526,5 +537,112 @@ export function useCancelarComoAdmin() {
   return useMutation<unknown, ApiError, { id: string; app: string }>({
     mutationFn: ({ id, app }) => api.delete(`/admin/users/${id}/apps/${app}/runs/current`),
     onSuccess: (_datos, { id }) => invalidarAdmin(cliente, id),
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Trading                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * El bot es compartido: otro operador puede encenderlo mientras miras.
+ *
+ * Por eso esta consulta se refresca sola cada 10 s cuando hay algún motor
+ * encendido, y se queda quieta cuando no hay ninguno. Sondear un panel con
+ * todo apagado no aporta nada y cada refresco pregunta a los motores por red.
+ */
+export function useBotsTrading(habilitado = true) {
+  return useQuery<BotsTrading, ApiError>({
+    queryKey: claves.trading,
+    queryFn: () => api.get<BotsTrading>("/trading/bots"),
+    enabled: habilitado,
+    refetchInterval: (consulta) =>
+      consulta.state.data?.items.some((bot: BotTrading) => bot.enabled) ? 10_000 : false,
+  });
+}
+
+export function useOperacionesTrading(bot: string, habilitado = true) {
+  return useQuery<OperacionesTrading, ApiError>({
+    queryKey: claves.tradingOperaciones(bot),
+    queryFn: () =>
+      api.get<OperacionesTrading>(`/trading/bots/${bot}/trades`, { query: { limit: 50 } }),
+    enabled: habilitado,
+  });
+}
+
+export function useRendimientoTrading(bot: string, habilitado = true) {
+  return useQuery<RendimientoTrading, ApiError>({
+    queryKey: claves.tradingRendimiento(bot),
+    queryFn: () => api.get<RendimientoTrading>(`/trading/bots/${bot}/performance`),
+    enabled: habilitado,
+  });
+}
+
+/**
+ * Toda mutación devuelve el bot ya actualizado, incluida su nueva `version`.
+ *
+ * Se siembra en la caché en vez de solo invalidar para que el formulario
+ * recupere al instante el número de versión que necesita para el siguiente
+ * guardado. Si solo invalidáramos, un segundo guardado rápido saldría con la
+ * versión vieja y el backend lo rechazaría por conflicto.
+ */
+function sembrarBot(cliente: ReturnType<typeof useQueryClient>, bot: BotTrading) {
+  cliente.setQueryData<BotsTrading>(claves.trading, (previo) =>
+    previo
+      ? {
+          ...previo,
+          items: previo.items.map((item) =>
+            item.motor.bot_name === bot.motor.bot_name ? bot : item,
+          ),
+        }
+      : previo,
+  );
+  void cliente.invalidateQueries({ queryKey: claves.tradingRendimiento(bot.motor.bot_name) });
+  void cliente.invalidateQueries({ queryKey: claves.tradingOperaciones(bot.motor.bot_name) });
+}
+
+export function useGuardarConfigTrading() {
+  const cliente = useQueryClient();
+  return useMutation<BotTrading, ApiError, { bot: string; datos: ConfigTradingEntrada }>({
+    mutationFn: ({ bot, datos }) => api.put<BotTrading>(`/trading/bots/${bot}/config`, datos),
+    onSuccess: (bot) => sembrarBot(cliente, bot),
+  });
+}
+
+export function useInterruptorTrading() {
+  const cliente = useQueryClient();
+  return useMutation<BotTrading, ApiError, { bot: string; enabled: boolean; version: number }>({
+    mutationFn: ({ bot, ...datos }) => api.post<BotTrading>(`/trading/bots/${bot}/switch`, datos),
+    onSuccess: (bot) => sembrarBot(cliente, bot),
+  });
+}
+
+export function useAccesosTrading(habilitado = true) {
+  return useQuery<AccesosTrading, ApiError>({
+    queryKey: claves.tradingAccesos,
+    queryFn: () => api.get<AccesosTrading>("/trading/access"),
+    enabled: habilitado,
+  });
+}
+
+export function useConcederAccesoTrading() {
+  const cliente = useQueryClient();
+  return useMutation<AccesoTrading, ApiError, { id: string; level: string }>({
+    mutationFn: ({ id, level }) => api.put<AccesoTrading>(`/trading/access/${id}`, { level }),
+    onSuccess: (_datos, { id }) => {
+      void cliente.invalidateQueries({ queryKey: claves.tradingAccesos });
+      invalidarAdmin(cliente, id);
+    },
+  });
+}
+
+export function useRevocarAccesoTrading() {
+  const cliente = useQueryClient();
+  return useMutation<void, ApiError, string>({
+    mutationFn: (id) => api.delete<void>(`/trading/access/${id}`),
+    onSuccess: (_datos, id) => {
+      void cliente.invalidateQueries({ queryKey: claves.tradingAccesos });
+      invalidarAdmin(cliente, id);
+    },
   });
 }

@@ -43,6 +43,18 @@ export function IconoPortafolio({ className }: Props) {
   );
 }
 
+/** Velas japonesas: se lee como «mercado» sin chocar con el gráfico de barras
+ *  del portafolio ni con la línea de actividad. */
+export function IconoTrading({ className }: Props) {
+  return (
+    <svg {...BASE} className={className} aria-hidden="true">
+      <path d="M8 4v3.5m0 8V19M16 6v3.5m0 7V20" />
+      <rect x="5.5" y="7.5" width="5" height="8" rx="1" />
+      <rect x="13.5" y="9.5" width="5" height="7" rx="1" />
+    </svg>
+  );
+}
+
 export function IconoActividad({ className }: Props) {
   return (
     <svg {...BASE} className={className} aria-hidden="true">
