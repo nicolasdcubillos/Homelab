@@ -25,31 +25,37 @@ class RegimeSettings:
 
 
 def load_regime_settings() -> RegimeSettings:
+    from ..settings import _env_bool, _env_int, _env_str
+
     prefix = "DASHBOARD_REGIME_"
 
-    def flag(name: str) -> bool:
-        return os.getenv(prefix + name, "").strip().lower() in {"true", "1", "yes"}
-
     def number(name: str, default: float, minimum: float, maximum: float) -> float:
+        raw = os.getenv(prefix + name, "").strip()
         try:
-            value = float(os.getenv(prefix + name, str(default)))
+            value = float(raw) if raw else default
         except ValueError:
-            return default
-        return value if minimum <= value <= maximum else default
+            raise ValueError(f"{prefix}{name} debe ser un numero.") from None
+        if not minimum <= value <= maximum:
+            raise ValueError(f"{prefix}{name} debe estar entre {minimum} y {maximum}.")
+        return value
+
+    disk_min_free_mb = _env_int(prefix + "DISK_MIN_FREE_MB", 1024, minimum=0)
+    if disk_min_free_mb > 1_000_000:
+        raise ValueError(f"{prefix}DISK_MIN_FREE_MB no puede superar 1000000.")
 
     return RegimeSettings(
-        enabled=flag("ENABLED"),
-        deliveries_enabled=flag("DELIVERIES_ENABLED"),
-        bls_key=os.getenv(prefix + "BLS_KEY", ""),
-        bea_key=os.getenv(prefix + "BEA_KEY", ""),
-        fred_key=os.getenv(prefix + "FRED_KEY", ""),
-        acs_connection_string=os.getenv(prefix + "ACS_CONNECTION_STRING", ""),
-        acs_email_sender=os.getenv(prefix + "ACS_EMAIL_SENDER", ""),
-        acs_channel_id=os.getenv(prefix + "ACS_CHANNEL_ID", ""),
-        whatsapp_template_name=os.getenv(prefix + "WHATSAPP_TEMPLATE_NAME", ""),
-        whatsapp_template_language=os.getenv(prefix + "WHATSAPP_TEMPLATE_LANGUAGE", "es"),
-        whatsapp_template_approved=flag("WHATSAPP_TEMPLATE_APPROVED"),
-        public_base_url=os.getenv(prefix + "PUBLIC_BASE_URL", "").rstrip("/"),
-        disk_min_free_mb=int(number("DISK_MIN_FREE_MB", 1024, 0, 1_000_000)),
+        enabled=_env_bool(prefix + "ENABLED", False),
+        deliveries_enabled=_env_bool(prefix + "DELIVERIES_ENABLED", False),
+        bls_key=_env_str(prefix + "BLS_KEY", ""),
+        bea_key=_env_str(prefix + "BEA_KEY", ""),
+        fred_key=_env_str(prefix + "FRED_KEY", ""),
+        acs_connection_string=_env_str(prefix + "ACS_CONNECTION_STRING", ""),
+        acs_email_sender=_env_str(prefix + "ACS_EMAIL_SENDER", ""),
+        acs_channel_id=_env_str(prefix + "ACS_CHANNEL_ID", ""),
+        whatsapp_template_name=_env_str(prefix + "WHATSAPP_TEMPLATE_NAME", ""),
+        whatsapp_template_language=_env_str(prefix + "WHATSAPP_TEMPLATE_LANGUAGE", "es"),
+        whatsapp_template_approved=_env_bool(prefix + "WHATSAPP_TEMPLATE_APPROVED", False),
+        public_base_url=_env_str(prefix + "PUBLIC_BASE_URL", "").rstrip("/"),
+        disk_min_free_mb=disk_min_free_mb,
         timeout=number("TIMEOUT", 20, 1, 120),
     )

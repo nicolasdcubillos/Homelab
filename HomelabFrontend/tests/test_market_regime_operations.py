@@ -113,6 +113,9 @@ def test_settings_default_off_secret_repr_and_frozen(monkeypatch):
     monkeypatch.setenv("DASHBOARD_REGIME_BLS_KEY", "synthetic-secret")
     monkeypatch.setenv("ACS_CONNECTION_STRING", "must-not-use-shared-secret")
     monkeypatch.setenv("DASHBOARD_REGIME_TIMEOUT", "nan")
+    with pytest.raises(ValueError, match="DASHBOARD_REGIME_TIMEOUT"):
+        load_regime_settings()
+    monkeypatch.delenv("DASHBOARD_REGIME_TIMEOUT")
     settings = load_regime_settings()
     assert settings.bls_key == "synthetic-secret"
     assert settings.acs_connection_string == ""

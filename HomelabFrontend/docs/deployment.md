@@ -231,6 +231,8 @@ El archivo opcional `/etc/homelab/market-regime.env` admite únicamente claves
 `DASHBOARD_REGIME_*`, una por línea; debe ser de root y modo 0600. No puede
 cambiar la DB, el puerto ni el scheduler global. No se copian claves de otros
 servicios. Los envíos del módulo permanecen desactivados por defecto.
+Los booleanos y límites numéricos inválidos provocan un error explícito de
+configuración; no se sustituyen silenciosamente por valores predeterminados.
 
 Diagnóstico:
 
