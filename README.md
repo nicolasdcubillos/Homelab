@@ -15,12 +15,13 @@ Azure Communication Services.
 | [`StockWatcher/`](StockWatcher/) | Vigila stock/talla/color de productos (Nike Mind, Yeezy, etc.) en decenas de tiendas y avisa cuando hay restock al precio correcto. | Email (ACS), WhatsApp listo en código pero sin activar | `systemd` timer horario |
 | [`PortfolioWatcher/`](PortfolioWatcher/) | Analiza el portafolio de inversión (riesgo/oportunidad) con un pipeline LLM de 2 niveles sobre Azure OpenAI; nunca ejecuta órdenes. | WhatsApp (ACS) | `systemd` timers 2x/día + semanal |
 | [`HomelabFrontend/`](HomelabFrontend/) *(antes `HomelabDashboard`)* | Panel web (FastAPI) para editar configs y disparar corridas manuales de las otras 2 apps desde el celular, sin SSH. | — | `systemd` service detrás de Caddy (HTTPS + Basic Auth) |
-| [`TradingLab/`](TradingLab/) | Motor de trading **simulado** (paper) de acciones y ETFs sobre Alpaca Paper vía Lumibot. No mueve dinero real. Se enciende, se configura y se consulta desde el panel; nunca desde el servidor. | — (el panel muestra el estado) | `systemd` service permanente |
+| [`TradingLab/`](TradingLab/) | Supervisor de acciones y ETFs con demo local persistente de precios sintéticos. La ejecución Alpaca Paper permanece bloqueada hasta implementar conciliación durable de órdenes. | — (el panel muestra el estado) | `systemd` service permanente |
 
-El módulo de trading del panel maneja **dos** motores: `TradingLab/` para
-acciones y Freqtrade —de terceros, sin carpeta aquí— para cripto. Ambos son
-solo lectura desde el dashboard: la configuración vive en su base y cada motor
-la relee. Ver [`HomelabFrontend/docs/trading.md`](HomelabFrontend/docs/trading.md).
+El módulo de trading distingue `TradingLab/` para acciones y Freqtrade —de
+terceros, sin carpeta aquí— para cripto. El panel no presenta una intención
+guardada como prueba de que el motor la aplicó. No se habilitan órdenes contra
+servicios externos mientras sus adaptadores no garanticen el contrato.
+Ver [`HomelabFrontend/docs/trading.md`](HomelabFrontend/docs/trading.md).
 
 Cada carpeta tiene su propio `README.md`, `docs/`, tests y `pyproject.toml` —
 son paquetes Python independientes que solo comparten la VM y (donde aplica)
@@ -36,11 +37,11 @@ Container Apps Jobs para este volumen — se evaluó Container Apps Job para
 StockWatcher (ver `StockWatcher/infra/`, hoy sin desplegar) pero se descartó
 por costo/complejidad frente a reusar la VM que PortfolioWatcher ya paga.
 
-**Excepción: trading.** Los motores de trading no son corridas puntuales sino
-procesos permanentes, y Lumibot pesa varios cientos de MB en disco. Por eso el
-módulo de trading pide subir la VM a `Standard_B2as_v2` (2 vCPU, 8 GiB) y que
-cada unidad `systemd` declare `MemoryMax=`. El detalle está en
-[`HomelabFrontend/docs/trading.md`](HomelabFrontend/docs/trading.md) §7.
+**Capacidad para trading.** Se contempla `Standard_B2as_v2` (2 vCPU, 8 GiB) para
+los motores completos, pero el supervisor actual sin SDK cabe en la B2s y no
+justifica ampliarla todavía. Cada servicio tiene límites de recursos; el
+[despliegue de TradingLab](TradingLab/README.md#despliegue) documenta las rutas,
+el rollback y el costo estimado, sin prometer operativa Alpaca habilitada.
 
 ## Infraestructura (Terraform)
 
