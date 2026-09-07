@@ -76,13 +76,12 @@ Alpaca ni una estimación de retornos reales.
 | -------------------------- | ---------------------- | --------------------------------------------------- |
 | `TRADINGLAB_DASHBOARD_DB`  | `data/dashboard.db`    | Base del dashboard, de donde se lee la configuración |
 | `TRADINGLAB_DB`            | `data/tradinglab.db`   | Base propia; debe coincidir con `DASHBOARD_TRADINGLAB_DB` |
-| `ALPACA_API_KEY`           | —                      | Credenciales de Alpaca Paper                        |
-| `ALPACA_API_SECRET`        | —                      | Credenciales de Alpaca Paper                        |
-| `LUMIBOT_DISABLE_DOTENV`   | `1` (se fija solo)     | Evita que importar Lumibot escanee el disco buscando `.env` |
 
-Las credenciales van en el `Environment=` de la unidad de systemd y **nunca en
-la base de datos**: la configuración compartida la puede editar cualquier
-usuario autorizado desde el celular.
+El código actual no lee `ALPACA_API_KEY` ni `ALPACA_API_SECRET` y no importa
+Lumibot: añadir claves no elimina el bloqueo. La unidad fija
+`LUMIBOT_DISABLE_DOTENV=1` como precaución, no como señal de que el SDK se esté
+usando. Las credenciales de una futura integración irán en un archivo de entorno
+privado, **nunca en la base de datos** compartida con los usuarios.
 
 ## Configuración
 
