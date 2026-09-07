@@ -18,7 +18,9 @@ ssh_public_key = "ssh-ed25519 AAAA... you@example.com"
 # Update this if your IP changes; avoid leaving SSH open to "*".
 allowed_ssh_source_address = "203.0.113.10/32"
 
-vm_size = "Standard_B2s"
+# Objetivo para ejecutar ambos motores: 2 vCPU / 8 GiB, ~54.90 USD/mes PAYG.
+# La VM actual puede seguir en B2s mientras los motores externos esten bloqueados.
+vm_size = "Standard_B2as_v2"
 
 openai_sku_name               = "S0"
 openai_triage_model           = "gpt-4.1-mini"

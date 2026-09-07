@@ -147,9 +147,16 @@ def _cmd_openapi(args: argparse.Namespace) -> int:
         os.environ["DASHBOARD_DATA_DIR"] = str(Path(tmp) / "data")
         os.environ["DASHBOARD_LOGS_DIR"] = str(Path(tmp) / "logs")
         os.environ["DASHBOARD_SCHEDULER_ENABLED"] = "false"
+        app = None
         try:
-            esquema = create_app().openapi()
+            app = create_app()
+            esquema = app.openapi()
         finally:
+            # Sin esto el pool de SQLAlchemy deja abierto el archivo SQLite y
+            # el borrado del temporal falla en Windows, que no permite eliminar
+            # archivos en uso.
+            if app is not None:
+                app.state.db_engine.dispose()
             os.environ.clear()
             os.environ.update(entorno)
 

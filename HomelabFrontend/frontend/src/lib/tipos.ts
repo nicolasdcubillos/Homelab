@@ -75,3 +75,27 @@ export type Bitacora = S["BitacoraOut"];
 export type EntradaBitacora = S["EntradaBitacoraOut"];
 export type EjecucionAdmin = S["EjecucionAdminOut"];
 export type EjecucionesAdmin = S["EjecucionesAdminOut"];
+
+/* Trading ------------------------------------------------------------------ */
+export type BotTrading = S["BotTradingOut"];
+export type BotsTrading = S["BotsTradingOut"];
+export type MotorTrading = S["MotorInfoOut"];
+export type EstadoMotor = S["EstadoMotorOut"];
+export type ConfigTrading = S["ConfigTradingOut"];
+export type ConfigTradingEntrada = S["ConfigTradingIn"];
+export type OperacionTrading = S["OperacionOut"];
+export type OperacionesTrading = S["OperacionesOut"];
+export type RendimientoTrading = S["RendimientoOut"];
+export type AccesoTrading = S["AccesoTradingOut"];
+export type AccesosTrading = S["AccesosTradingOut"];
+
+// El nivel decide la mitad de la pantalla de trading: un `viewer` ve
+// exactamente lo mismo que un `operator`, pero sin un solo control activo.
+export type NivelTrading = "viewer" | "operator";
+// Solo hay un modo y es deliberado: el bot no puede operar con dinero real.
+// Se tipa igual para que añadir uno nuevo rompa la compilación antes que la UI.
+export type ModoTrading = "paper";
+// En español porque los motores hablan idiomas distintos y el backend ya los
+// traduce: Freqtrade dice `is_short` y TradingLab escribe la palabra directa.
+// La UI recibe un solo vocabulario, no el del motor que tocó responder.
+export type LadoOperacion = "compra" | "venta";

@@ -12,6 +12,8 @@ import type {
   EstadoUsuario,
   Genero,
   Horizonte,
+  LadoOperacion,
+  NivelTrading,
   Rol,
   Tolerancia,
 } from "./tipos";
@@ -89,6 +91,21 @@ export const DESCRIPCION_TOLERANCIA: Record<Tolerancia, string> = {
 export const APP_TITULO: Record<string, string> = {
   stockwatcher: "Vigilancias",
   portfoliowatcher: "Portafolio",
+};
+
+export const NIVEL_TRADING: Record<NivelTrading, string> = {
+  viewer: "Solo lectura",
+  operator: "Operador",
+};
+
+export const DESCRIPCION_NIVEL_TRADING: Record<NivelTrading, string> = {
+  viewer: "Ve el estado, la configuración y las operaciones. No puede cambiar nada.",
+  operator: "Puede encender, apagar y cambiar la configuración de los bots.",
+};
+
+export const LADO_OPERACION: Record<LadoOperacion, string> = {
+  compra: "Compra",
+  venta: "Venta",
 };
 
 export function etiqueta<T extends string>(

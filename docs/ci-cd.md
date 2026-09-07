@@ -60,8 +60,15 @@ en `StockWatcher/` no dispare un redeploy de `PortfolioWatcher` ni de
 | `deploy-stockwatcher.yml` | `StockWatcher/**` | git pull, reinstala venv, reinicia `stockwatcher-run.service` de inmediato (no espera al timer horario), imprime el último resumen |
 | `deploy-portfoliowatcher.yml` | `PortfolioWatcher/**` | git pull, reinstala venv, smoke-check de import, verifica que los timers `daily`/`weekly` sigan activos |
 | `deploy-homelabfrontend.yml` | `HomelabFrontend/**` | git pull, reinstala venv, reinicia `homelab-dashboard.service` (proceso long-running), verifica `curl` 200 |
+| `deploy-tradinglab.yml` | `TradingLab/**` | checkout del SHA exacto, venv aislado por versión, unidades versionadas, rollback y comprobación de latido reciente |
 
 Todos corren en `runs-on: [self-hosted, homelab-vm]`.
+
+TradingLab no reutiliza el checkout compartido de producción para instalarse:
+su workflow llama a `TradingLab/scripts/deploy.sh`, conserva el estado en
+`/var/lib/tradinglab/` y cambia un enlace `current` entre versiones. El despliegue
+no habilita órdenes ni mezcla la demo sintética con el estado Alpaca Paper.
+Consulta [su documentación de despliegue](../TradingLab/README.md#despliegue).
 
 ### Patrón para agregar un 4to proyecto
 

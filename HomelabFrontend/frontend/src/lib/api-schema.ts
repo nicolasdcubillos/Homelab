@@ -171,9 +171,9 @@ export interface paths {
         };
         /**
          * Csrf
-         * @description Devuelve el token CSRF de la sesión actual y reafirma la cookie.
+         * @description Devuelve el token CSRF de la sesi�n actual y reafirma la cookie.
          *
-         *     Existe para que la SPA se recupere si el usuario borró solo la cookie
+         *     Existe para que la SPA se recupere si el usuario borr� solo la cookie
          *     legible, sin obligarlo a volver a entrar.
          */
         get: operations["csrf_api_v1_auth_csrf_get"];
@@ -213,7 +213,7 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Cierra la sesión actual. Es idempotente: sin sesión también responde OK
+         * @description Cierra la sesi�n actual. Es idempotente: sin sesi�n tambi�n responde OK
          *     y limpia las cookies, para que la SPA pueda 'salir' de un estado roto.
          */
         post: operations["logout_api_v1_auth_logout_post"];
@@ -232,7 +232,7 @@ export interface paths {
         };
         /**
          * Yo
-         * @description Usuario en sesión. Es la primera llamada de la SPA al arrancar.
+         * @description Usuario en sesi�n. Es la primera llamada de la SPA al arrancar.
          */
         get: operations["yo_api_v1_auth_me_get"];
         put?: never;
@@ -254,10 +254,10 @@ export interface paths {
         put?: never;
         /**
          * Cambiar Password
-         * @description Cambio de contraseña propio.
+         * @description Cambio de contrase�a propio.
          *
-         *     Si el usuario venía de un reset forzado por un admin, no se le pide la
-         *     contraseña anterior (no la conoce). En cualquier otro caso sí.
+         *     Si el usuario ven�a de un reset forzado por un admin, no se le pide la
+         *     contrase�a anterior (no la conoce). En cualquier otro caso s�.
          */
         post: operations["cambiar_password_api_v1_auth_password_post"];
         delete?: never;
@@ -300,8 +300,8 @@ export interface paths {
          * @description Alta abierta. El usuario nace `pending` y no puede ejecutar nada hasta
          *     que un administrador lo active.
          *
-         *     Excepción: si la instalación está vacía, el primer registro se convierte en
-         *     admin activo. Evita que una instalación recién desplegada quede sin nadie
+         *     Excepci�n: si la instalaci�n est� vac�a, el primer registro se convierte en
+         *     admin activo. Evita que una instalaci�n reci�n desplegada quede sin nadie
          *     que pueda aprobar a nadie.
          */
         post: operations["registrar_api_v1_auth_register_post"];
@@ -340,9 +340,9 @@ export interface paths {
         };
         /**
          * Previsualizar Config
-         * @description El YAML que se le pasaría al watcher con la configuración actual.
+         * @description El YAML que se le pasar�a al watcher con la configuraci�n actual.
          *
-         *     Devuelve transparencia sin reabrir la edición de YAML a mano. No escribe
+         *     Devuelve transparencia sin reabrir la edici�n de YAML a mano. No escribe
          *     nada en disco: solo calcula la ruta de destino para mostrarla.
          */
         get: operations["previsualizar_config_api_v1_me_apps__app_name__config_preview_get"];
@@ -417,10 +417,10 @@ export interface paths {
         post?: never;
         /**
          * Borrar Mis Datos
-         * @description Borra toda la configuración del usuario sin borrar la cuenta.
+         * @description Borra toda la configuraci�n del usuario sin borrar la cuenta.
          *
-         *     Se exige la contraseña: es una acción irreversible y la cookie de sesión
-         *     por sí sola no basta para autorizarla.
+         *     Se exige la contrase�a: es una acci�n irreversible y la cookie de sesi�n
+         *     por s� sola no basta para autorizarla.
          */
         delete: operations["borrar_mis_datos_api_v1_me_data_delete"];
         options?: never;
@@ -439,7 +439,7 @@ export interface paths {
         get: operations["ver_notificaciones_api_v1_me_notifications_get"];
         /**
          * Guardar Notificaciones
-         * @description Guarda los destinos. Una cadena vacía borra el canal.
+         * @description Guarda los destinos. Una cadena vac�a borra el canal.
          */
         put: operations["guardar_notificaciones_api_v1_me_notifications_put"];
         post?: never;
@@ -585,7 +585,7 @@ export interface paths {
          * @description Estado de todas las apps de una sola vez.
          *
          *     La pantalla de inicio las necesita juntas; pedirlas una por una
-         *     multiplicaría las peticiones desde el móvil.
+         *     multiplicar�a las peticiones desde el m�vil.
          */
         get: operations["ver_readiness_global_api_v1_me_readiness_get"];
         put?: never;
@@ -674,10 +674,10 @@ export interface paths {
         get?: never;
         /**
          * Guardar Programacion
-         * @description Crea o actualiza la programación de un comando.
+         * @description Crea o actualiza la programaci�n de un comando.
          *
-         *     Se acepta programar aunque el usuario todavía no esté listo para ejecutar:
-         *     dejar la automatización armada mientras se completa la configuración es
+         *     Se acepta programar aunque el usuario todav�a no est� listo para ejecutar:
+         *     dejar la automatizaci�n armada mientras se completa la configuraci�n es
          *     parte del onboarding. El pre-vuelo del scheduler decide en cada disparo.
          */
         put: operations["guardar_programacion_api_v1_me_schedules__app_name___command_key__put"];
@@ -739,10 +739,161 @@ export interface paths {
          * Cambiar Zona Horaria
          * @description Cambia la zona horaria y recalcula lo programado con cron.
          *
-         *     Sin el recálculo, un «diario a las 8:00» seguiría disparándose a la hora
-         *     de la zona anterior hasta la siguiente edición manual.
+         *     Sin el rec�lculo, un �diario a las 8:00� seguir�a dispar�ndose a la hora
+         *     de la zona anterior hasta la siguiente edici�n manual.
          */
         put: operations["cambiar_zona_horaria_api_v1_me_timezone_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Accesos */
+        get: operations["listar_accesos_api_v1_trading_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/access/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Conceder Acceso */
+        put: operations["conceder_acceso_api_v1_trading_access__user_id__put"];
+        post?: never;
+        /**
+         * Revocar Acceso
+         * @description Revocar es borrar la fila.
+         *
+         *     No hay una columna `enabled` a prop�sito: un permiso "concedido pero
+         *     desactivado" es un estado ambiguo que tarde o temprano alguien interpreta
+         *     mal. O est� la fila, o no hay acceso.
+         */
+        delete: operations["revocar_acceso_api_v1_trading_access__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/bots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Bots */
+        get: operations["listar_bots_api_v1_trading_bots_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/bots/{bot_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtener Bot */
+        get: operations["obtener_bot_api_v1_trading_bots__bot_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/bots/{bot_name}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Guardar Config */
+        put: operations["guardar_config_api_v1_trading_bots__bot_name__config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/bots/{bot_name}/performance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rendimiento */
+        get: operations["rendimiento_api_v1_trading_bots__bot_name__performance_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/bots/{bot_name}/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Interruptor
+         * @description Enciende o apaga el bot compartido.
+         *
+         *     Encender exige que haya al menos un instrumento configurado: un motor sin
+         *     nada que vigilar arrancar�a, no har�a nada y aparecer�a como "operando",
+         *     que es la peor combinaci�n posible para quien mira el panel.
+         */
+        post: operations["interruptor_api_v1_trading_bots__bot_name__switch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trading/bots/{bot_name}/trades": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar Operaciones */
+        get: operations["listar_operaciones_api_v1_trading_bots__bot_name__trades_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -754,6 +905,38 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccesosTradingOut */
+        AccesosTradingOut: {
+            /** Items */
+            items: components["schemas"]["AccesoTradingOut"][];
+        };
+        /** AccesoTradingIn */
+        AccesoTradingIn: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "viewer" | "operator";
+        };
+        /** AccesoTradingOut */
+        AccesoTradingOut: {
+            /** Email */
+            email: string;
+            /**
+             * Granted At
+             * Format: date-time
+             */
+            granted_at: string;
+            /** Granted By Email */
+            granted_by_email: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "viewer" | "operator";
+            /** User Id */
+            user_id: string;
+        };
         /** AppOut */
         AppOut: {
             /** App Name */
@@ -781,10 +964,41 @@ export interface components {
             /** Items */
             items: components["schemas"]["EntradaBitacoraOut"][];
         };
+        /** BotsTradingOut */
+        BotsTradingOut: {
+            /** Items */
+            items: components["schemas"]["BotTradingOut"][];
+            /**
+             * Nivel
+             * @enum {string}
+             */
+            nivel: "viewer" | "operator";
+        };
+        /**
+         * BotTradingOut
+         * @description Todo lo que la UI necesita de un motor en una sola respuesta.
+         */
+        BotTradingOut: {
+            config: components["schemas"]["ConfigTradingOut"];
+            /** Config Aplicada */
+            config_aplicada: boolean;
+            /** Enabled */
+            enabled: boolean;
+            estado: components["schemas"]["EstadoMotorOut"];
+            /** Modo */
+            modo: string;
+            motor: components["schemas"]["MotorInfoOut"];
+            /** Updated At */
+            updated_at?: string | null;
+            /** Updated By Email */
+            updated_by_email: string;
+            /** Version */
+            version: number;
+        };
         /**
          * CambiarUsuarioIn
          * @description Cambios de estado y rol. Ambos campos son opcionales: la UI manda solo
-         *     el que el admin tocó.
+         *     el que el admin toc�.
          */
         CambiarUsuarioIn: {
             /** Role */
@@ -814,8 +1028,59 @@ export interface components {
             label: string;
         };
         /**
+         * ConfigTradingIn
+         * @description Configuraci�n propuesta.
+         *
+         *     `extra="forbid"` (heredado de `Esquema`) hace aqu� un trabajo de seguridad
+         *     real y no solo de higiene: es lo que impide que llegue un `dry_run: false`
+         *     o una clave de API colada en el cuerpo. `trading.validar_config` vuelve a
+         *     rechazarlas expl�citamente por si este esquema cambiara.
+         */
+        ConfigTradingIn: {
+            /** Capital Simulado */
+            capital_simulado: number;
+            /**
+             * Estrategia
+             * @default
+             */
+            estrategia: string;
+            /** Instrumentos */
+            instrumentos?: string[];
+            /** Max Perdida Diaria Pct */
+            max_perdida_diaria_pct: number;
+            /** Max Posiciones Abiertas */
+            max_posiciones_abiertas: number;
+            /** Stop Loss Pct */
+            stop_loss_pct: number;
+            /** Take Profit Pct */
+            take_profit_pct: number;
+            /** Timeframe */
+            timeframe: string;
+            /** Version */
+            version: number;
+        };
+        /** ConfigTradingOut */
+        ConfigTradingOut: {
+            /** Capital Simulado */
+            capital_simulado: number;
+            /** Estrategia */
+            estrategia: string;
+            /** Instrumentos */
+            instrumentos: string[];
+            /** Max Perdida Diaria Pct */
+            max_perdida_diaria_pct: number;
+            /** Max Posiciones Abiertas */
+            max_posiciones_abiertas: number;
+            /** Stop Loss Pct */
+            stop_loss_pct: number;
+            /** Take Profit Pct */
+            take_profit_pct: number;
+            /** Timeframe */
+            timeframe: string;
+        };
+        /**
          * ConfirmarPasswordIn
-         * @description Confirmación para acciones destructivas sobre datos propios.
+         * @description Confirmaci�n para acciones destructivas sobre datos propios.
          */
         ConfirmarPasswordIn: {
             /** Password */
@@ -912,6 +1177,42 @@ export interface components {
             /** Target Email */
             target_email: string;
         };
+        /** EstadoMotorOut */
+        EstadoMotorOut: {
+            /** Alcanzable */
+            alcanzable: boolean;
+            /** Config Version */
+            config_version?: number | null;
+            /** Corriendo */
+            corriendo: boolean;
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "desconocido" | "operando" | "pausado" | "esperando" | "detenido" | "error" | "bloqueado" | "stale";
+            /** Latido En */
+            latido_en?: string | null;
+            /** Modo */
+            modo: string;
+            /** Posiciones Abiertas */
+            posiciones_abiertas: number | null;
+            /** Version */
+            version?: string | null;
+        };
+        /**
+         * EstrategiaInfoOut
+         * @description Una estrategia ofrecida por un motor con cat�logo cerrado.
+         */
+        EstrategiaInfoOut: {
+            /** Descripcion */
+            descripcion: string;
+            /** Etiqueta */
+            etiqueta: string;
+            /** Nombre */
+            nombre: string;
+        };
         /**
          * HitDetalleOut
          * @description Un hallazgo nuevo de StockWatcher, tal como lo publica ``hit_detail``.
@@ -976,6 +1277,13 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** InterruptorIn */
+        InterruptorIn: {
+            /** Enabled */
+            enabled: boolean;
+            /** Version */
+            version: number;
+        };
         /** LanzarIn */
         LanzarIn: {
             /** Command Key */
@@ -1034,8 +1342,43 @@ export interface components {
             message: string;
         };
         /**
+         * MotorInfoOut
+         * @description Descripci�n est�tica de un motor, para que la UI se adapte sola.
+         */
+        MotorInfoOut: {
+            /** Bot Name */
+            bot_name: string;
+            /** Clase Activo */
+            clase_activo: string;
+            /** Display Name */
+            display_name: string;
+            /** Ejemplo Instrumento */
+            ejemplo_instrumento: string;
+            /**
+             * Estrategias
+             * @default []
+             */
+            estrategias: components["schemas"]["EstrategiaInfoOut"][];
+            /** Max Instrumentos */
+            max_instrumentos: number;
+            /** Motivo Bloqueo */
+            motivo_bloqueo: string;
+            /** Permite Encender */
+            permite_encender: boolean;
+            /** Proyecto */
+            proyecto: string;
+            /** Simula Contra */
+            simula_contra: string;
+            /** Termino Plural */
+            termino_plural: string;
+            /** Termino Singular */
+            termino_singular: string;
+            /** Timeframes */
+            timeframes: string[];
+        };
+        /**
          * NotificacionesIn
-         * @description Destinos de notificación. Cadena vacía o `null` borra el canal.
+         * @description Destinos de notificaci�n. Cadena vac�a o `null` borra el canal.
          */
         NotificacionesIn: {
             /**
@@ -1053,10 +1396,10 @@ export interface components {
          * NotificacionesOut
          * @description Forma plana, pensada para mapear directo a un formulario.
          *
-         *     `supported` existe para que la UI nunca tenga que hardcodear qué canales
+         *     `supported` existe para que la UI nunca tenga que hardcodear qu� canales
          *     ofrece cada app: se deriva de `WatcherSpec.canales_soportados` en
-         *     `watchers.py`, así que si algún watcher no implementara un canal (o deja
-         *     de implementarlo), la UI lo refleja sin ningún cambio de frontend.
+         *     `watchers.py`, as� que si alg�n watcher no implementara un canal (o deja
+         *     de implementarlo), la UI lo refleja sin ning�n cambio de frontend.
          */
         NotificacionesOut: {
             /** Email */
@@ -1085,11 +1428,44 @@ export interface components {
              */
             ok: boolean;
         };
+        /** OperacionesOut */
+        OperacionesOut: {
+            /**
+             * Disponible
+             * @default true
+             */
+            disponible: boolean;
+            /** Items */
+            items: components["schemas"]["OperacionOut"][];
+        };
+        /** OperacionOut */
+        OperacionOut: {
+            /** Abierta */
+            abierta: boolean;
+            /** Abierta En */
+            abierta_en: string | null;
+            /** Cantidad */
+            cantidad: number;
+            /** Cerrada En */
+            cerrada_en: string | null;
+            /** Instrumento */
+            instrumento: string;
+            /** Lado */
+            lado: string;
+            /** Pnl Absoluto */
+            pnl_absoluto: number | null;
+            /** Pnl Pct */
+            pnl_pct: number | null;
+            /** Precio Entrada */
+            precio_entrada: number;
+            /** Precio Salida */
+            precio_salida: number | null;
+        };
         /**
          * PasswordAdminIn
-         * @description O se fija una contraseña nueva, o se invalida la actual.
+         * @description O se fija una contrase�a nueva, o se invalida la actual.
          *
-         *     `force_reset` existe para el caso «no quiero conocer su contraseña»: deja
+         *     `force_reset` existe para el caso �no quiero conocer su contrase�a�: deja
          *     la cuenta sin acceso hasta que se le asigne una.
          */
         PasswordAdminIn: {
@@ -1199,11 +1575,11 @@ export interface components {
         };
         /**
          * ProgramacionIn
-         * @description Cómo debe automatizarse un comando concreto.
+         * @description C�mo debe automatizarse un comando concreto.
          *
-         *     `kind` decide qué campo manda: `interval` usa `interval_minutes` y `cron`
+         *     `kind` decide qu� campo manda: `interval` usa `interval_minutes` y `cron`
          *     usa `cron_expr`. La coherencia entre ambos la valida el scheduler, que es
-         *     quien conoce los límites reales.
+         *     quien conoce los l�mites reales.
          */
         ProgramacionIn: {
             /** Cron Expr */
@@ -1281,6 +1657,36 @@ export interface components {
             /** Mensaje */
             mensaje: string;
             user: components["schemas"]["UsuarioOut"];
+        };
+        /** RendimientoOut */
+        RendimientoOut: {
+            /** Capital Actual */
+            capital_actual: number;
+            /** Capital Inicial */
+            capital_inicial: number;
+            /** Costos Simulados */
+            costos_simulados: number | null;
+            /**
+             * Disponible
+             * @default true
+             */
+            disponible: boolean;
+            /** Ganadoras */
+            ganadoras: number;
+            /** Mejor Pct */
+            mejor_pct: number | null;
+            /** Operaciones Cerradas */
+            operaciones_cerradas: number;
+            /** Peor Pct */
+            peor_pct: number | null;
+            /** Perdedoras */
+            perdedoras: number;
+            /** Pnl Absoluto */
+            pnl_absoluto: number;
+            /** Pnl Pct */
+            pnl_pct: number;
+            /** Win Rate */
+            win_rate: number | null;
         };
         /** ReordenarIn */
         ReordenarIn: {
@@ -1370,7 +1776,7 @@ export interface components {
         };
         /**
          * UsuarioOut
-         * @description Representación pública del usuario en sesión.
+         * @description Representaci�n p�blica del usuario en sesi�n.
          */
         UsuarioOut: {
             /**
@@ -1392,6 +1798,8 @@ export interface components {
             status: string;
             /** Timezone */
             timezone: string;
+            /** Trading Level */
+            trading_level?: ("viewer" | "operator") | null;
         };
         /** UsuariosAdminOut */
         UsuariosAdminOut: {
@@ -1420,7 +1828,7 @@ export interface components {
         /**
          * WatchesOut
          * @description Sobre con `items` en vez de una lista desnuda: deja sitio para
-         *     metadatos (límite, contador) sin romper el contrato.
+         *     metadatos (l�mite, contador) sin romper el contrato.
          */
         WatchesOut: {
             /** Items */
@@ -2970,6 +3378,275 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProgramacionesOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_accesos_api_v1_trading_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccesosTradingOut"];
+                };
+            };
+        };
+    };
+    conceder_acceso_api_v1_trading_access__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccesoTradingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccesoTradingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revocar_acceso_api_v1_trading_access__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_bots_api_v1_trading_bots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotsTradingOut"];
+                };
+            };
+        };
+    };
+    obtener_bot_api_v1_trading_bots__bot_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bot_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTradingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    guardar_config_api_v1_trading_bots__bot_name__config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bot_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigTradingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTradingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rendimiento_api_v1_trading_bots__bot_name__performance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bot_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RendimientoOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    interruptor_api_v1_trading_bots__bot_name__switch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bot_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterruptorIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTradingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_operaciones_api_v1_trading_bots__bot_name__trades_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                bot_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperacionesOut"];
                 };
             };
             /** @description Validation Error */

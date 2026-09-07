@@ -23,6 +23,9 @@ export function Disposicion() {
 
   const usuario = sesion?.user;
   const admin = usuario?.role === "admin";
+  // El backend ya resolvió el permiso (un admin cuenta como operador). La
+  // navegación solo lo lee: así no puede ofrecer una sección que la API negaría.
+  const trading = Boolean(usuario?.trading_level);
 
   const salir = () => {
     logout.mutate(undefined, { onSettled: () => navegar("/entrar", { replace: true }) });
@@ -32,6 +35,7 @@ export function Disposicion() {
     <div className="min-h-dvh bg-bg">
       <BarraLateral
         admin={admin}
+        trading={trading}
         email={usuario?.email ?? ""}
         pie={
           <Boton
@@ -71,7 +75,7 @@ export function Disposicion() {
         </main>
       </div>
 
-      <BarraPestanas admin={admin} />
+      <BarraPestanas admin={admin} trading={trading} />
     </div>
   );
 }

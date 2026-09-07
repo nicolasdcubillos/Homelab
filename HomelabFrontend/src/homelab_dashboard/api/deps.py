@@ -9,13 +9,21 @@ reciben pero exigen rol admin.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from .. import auth
-from ..models import ROLE_ADMIN, USER_ACTIVE, USER_SUSPENDED, AuthSession, User
+from ..models import (
+    ROLE_ADMIN,
+    TRADING_OPERATOR,
+    USER_ACTIVE,
+    USER_SUSPENDED,
+    AuthSession,
+    User,
+)
 from ..security import tokens_iguales
 from ..settings import Settings
 from .errors import ApiError, no_autenticado, prohibido
@@ -229,3 +237,91 @@ def usuario_admin(usuario: UsuarioDep) -> User:
 
 
 AdminDep = Annotated[User, Depends(usuario_admin)]
+
+
+# --------------------------------------------------------------------------
+# Trading
+# --------------------------------------------------------------------------
+#
+# El módulo de trading es la única parte de la app que trabaja sobre un recurso
+# **compartido**: un bot común que varios usuarios autorizados miran y operan.
+# Eso invierte la regla general ("cada quien solo ve lo suyo") y por eso el
+# acceso no se deriva de la sesión sino de una concesión explícita que hace un
+# admin, con dos niveles: mirar (`viewer`) y operar (`operator`).
+
+
+@dataclass(frozen=True)
+class ContextoTrading:
+    """Quién pregunta y con qué nivel, ya resuelto.
+
+    Las rutas reciben esto en vez del `User` a secas para no tener que repetir
+    la resolución del nivel ni volver a consultar `trading_access`.
+    """
+
+    usuario: User
+    nivel: str
+    #: `True` cuando el nivel viene del rol admin y no de una concesión
+    #: explícita. Se registra en la bitácora para que quede claro por qué vía
+    #: entró quien tocó el bot.
+    por_admin: bool
+
+    @property
+    def puede_operar(self) -> bool:
+        return self.nivel == TRADING_OPERATOR
+
+
+def acceso_trading(usuario: UsuarioOperativoDep) -> ContextoTrading | None:
+    """Resuelve el nivel de trading del usuario, o `None` si no tiene acceso.
+
+    Cuelga de `usuario_operativo` —y no de `usuario_autenticado`— porque el
+    trading es un recurso compartido: una cuenta que todavía espera aprobación,
+    o con la contraseña marcada para cambio, no debe llegar a ver el bot común
+    aunque alguien le hubiera concedido el permiso antes.
+
+    El nivel se resuelve en `User.trading_level` para que la API y la respuesta
+    de `/auth/me` no puedan discrepar. Aquí solo se añade `por_admin`, que
+    distingue por qué vía entró quien tocó el bot: es lo que después queda en
+    la bitácora.
+    """
+    nivel = usuario.trading_level
+    if nivel is None:
+        return None
+    return ContextoTrading(
+        usuario=usuario, nivel=nivel, por_admin=usuario.role == ROLE_ADMIN
+    )
+
+
+AccesoTradingDep = Annotated[ContextoTrading | None, Depends(acceso_trading)]
+
+
+def lector_trading(acceso: AccesoTradingDep) -> ContextoTrading:
+    """Exige acceso de lectura al módulo. Sin acceso responde 404, no 403.
+
+    Mismo criterio que `usuario_admin`: quien no fue autorizado no debería
+    poder deducir que existe un módulo de trading ni que hay un bot corriendo.
+    """
+    if acceso is None:
+        raise ApiError(404, "no_encontrado", "No se encontró el recurso.")
+    return acceso
+
+
+TradingLectorDep = Annotated[ContextoTrading, Depends(lector_trading)]
+
+
+def operador_trading(acceso: TradingLectorDep) -> ContextoTrading:
+    """Exige nivel `operator` para mutar: encender, apagar o editar la config.
+
+    Aquí sí se responde 403 y no 404: un `viewer` ya sabe que el módulo existe
+    —lo está viendo— así que esconderlo sería mentirle sin ganar nada. El
+    mensaje explica qué le falta y a quién pedírselo.
+    """
+    if not acceso.puede_operar:
+        raise prohibido(
+            "Tienes acceso de solo lectura al trading. "
+            "Pídele a un administrador que te dé permiso de operación.",
+            code="trading_solo_lectura",
+        )
+    return acceso
+
+
+TradingOperadorDep = Annotated[ContextoTrading, Depends(operador_trading)]

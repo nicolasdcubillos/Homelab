@@ -11,7 +11,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { useAvisos } from "@/components/Avisos";
 import { Boton } from "@/components/Boton";
-import { Campo, Interruptor } from "@/components/Campos";
+import { Campo, Interruptor, Selector } from "@/components/Campos";
 import { Confirmar } from "@/components/Confirmar";
 import { EstadoError, Esqueleto } from "@/components/Estados";
 import { Hoja, PieDeHoja } from "@/components/Hoja";
@@ -20,21 +20,97 @@ import { Lista, Fila, FilaValor } from "@/components/Lista";
 import { Pantalla } from "@/components/Pantalla";
 import { IconoAtras } from "@/components/iconos";
 import {
+  useAccesosTrading,
   useCambiarUsuarioAdmin,
+  useConcederAccesoTrading,
   useEliminarUsuarioAdmin,
   usePasswordAdmin,
+  useRevocarAccesoTrading,
   useUsuarioAdmin,
 } from "@/lib/consultas";
 import { mensajeDeError } from "@/lib/errores";
-import { CANAL, DESCRIPCION_ESTADO_USUARIO, DISPARADOR, ESTADO_EJECUCION, ESTADO_USUARIO, ROL, TONO_EJECUCION } from "@/lib/etiquetas";
+import { CANAL, DESCRIPCION_ESTADO_USUARIO, DESCRIPCION_NIVEL_TRADING, DISPARADOR, ESTADO_EJECUCION, ESTADO_USUARIO, NIVEL_TRADING, ROL, TONO_EJECUCION } from "@/lib/etiquetas";
 import { cadaCuanto, fechaHora, plural, relativo } from "@/lib/formato";
-import type { EstadoEjecucion, EstadoUsuario, Rol } from "@/lib/tipos";
+import type { EstadoEjecucion, EstadoUsuario, NivelTrading, Rol } from "@/lib/tipos";
 
 const TONO_ESTADO: Record<EstadoUsuario, "ok" | "aviso" | "neutro"> = {
   active: "ok",
   pending: "aviso",
   suspended: "neutro",
 };
+
+const OPCIONES_TRADING = [
+  { valor: "", texto: "Sin acceso" },
+  { valor: "viewer", texto: NIVEL_TRADING.viewer },
+  { valor: "operator", texto: NIVEL_TRADING.operator },
+] as const;
+
+/**
+ * Permiso sobre el módulo de trading.
+ *
+ * Va en su propio bloque y no junto al rol porque no es lo mismo: el rol dice
+ * quién es esta persona en la app, y esto dice qué puede hacerle a un recurso
+ * que comparte con todos los demás. Conceder «operador» aquí deja a alguien
+ * cambiar la configuración que ve el resto, así que la nota lo dice sin rodeos.
+ */
+function PermisoTrading({ id, esAdmin }: { id: string; esAdmin: boolean }) {
+  const accesos = useAccesosTrading(!esAdmin);
+  const conceder = useConcederAccesoTrading();
+  const revocar = useRevocarAccesoTrading();
+  const avisos = useAvisos();
+
+  if (esAdmin) {
+    return (
+      <Lista titulo="Trading">
+        <FilaValor
+          etiqueta="Acceso"
+          valor={NIVEL_TRADING.operator}
+          descripcion="Los administradores operan los bots sin necesitar un permiso aparte."
+        />
+      </Lista>
+    );
+  }
+
+  const actual = (accesos.data?.items.find((a) => a.user_id === id)?.level ?? "") as
+    | NivelTrading
+    | "";
+  const pendiente = accesos.isPending || conceder.isPending || revocar.isPending;
+
+  const cambiar = async (valor: string) => {
+    try {
+      if (valor === "") {
+        await revocar.mutateAsync(id);
+        avisos.exito("Le quitamos el acceso al trading.");
+      } else {
+        await conceder.mutateAsync({ id, level: valor });
+        avisos.exito(`Ahora tiene acceso de ${NIVEL_TRADING[valor as NivelTrading].toLowerCase()}.`);
+      }
+    } catch (error) {
+      avisos.error(mensajeDeError(error, "No pudimos cambiar el acceso al trading."));
+    }
+  };
+
+  return (
+    <Lista
+      titulo="Trading"
+      nota="Los bots son compartidos. Quien tenga permiso de operador puede encenderlos y cambiar la configuración que ven todos los demás."
+    >
+      <Fila className="py-3">
+        <Selector
+          etiqueta="Acceso al trading"
+          descripcion={
+            actual ? DESCRIPCION_NIVEL_TRADING[actual] : "No verá la sección de trading."
+          }
+          opciones={OPCIONES_TRADING}
+          value={actual}
+          onChange={(evento) => void cambiar(evento.target.value)}
+          disabled={pendiente}
+          className="w-full"
+        />
+      </Fila>
+    </Lista>
+  );
+}
 
 function BotonAtras() {
   return (
@@ -257,6 +333,8 @@ export function AdminUsuario() {
             }
           />
         </Lista>
+
+        <PermisoTrading id={id} esAdmin={user.role === "admin"} />
 
         {schedules.length > 0 && (
           <Lista titulo="Automatización">

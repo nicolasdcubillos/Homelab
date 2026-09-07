@@ -21,6 +21,7 @@ import { Login } from "./routes/Login";
 import { NoEncontrado } from "./routes/NoEncontrado";
 import { Portafolio } from "./routes/Portafolio";
 import { Registro } from "./routes/Registro";
+import { Trading } from "./routes/Trading";
 import { Vigilancias } from "./routes/Vigilancias";
 
 const cliente = new QueryClient({
@@ -40,7 +41,15 @@ const cliente = new QueryClient({
 });
 
 /** Deja pasar solo a quien tiene sesión; recuerda a dónde quería ir. */
-function Privada({ children, soloAdmin = false }: { children: React.ReactNode; soloAdmin?: boolean }) {
+function Privada({
+  children,
+  soloAdmin = false,
+  soloTrading = false,
+}: {
+  children: React.ReactNode;
+  soloAdmin?: boolean;
+  soloTrading?: boolean;
+}) {
   const { data: sesion, isPending, isError } = useSesion();
   const ubicacion = useLocation();
 
@@ -57,6 +66,13 @@ function Privada({ children, soloAdmin = false }: { children: React.ReactNode; s
   }
 
   if (soloAdmin && sesion.user.role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
+
+  // El trading no se concede por rol sino por permiso explícito, y la API
+  // responde 404 a quien no lo tiene. Redirigir en vez de dejar entrar evita
+  // pintar una pantalla entera de errores para explicar «no tienes acceso».
+  if (soloTrading && !sesion.user.trading_level) {
     return <Navigate to="/" replace />;
   }
 
@@ -112,6 +128,14 @@ function Rutas() {
         <Route path="/" element={<Inicio />} />
         <Route path="/vigilancias" element={<Vigilancias />} />
         <Route path="/portafolio" element={<Portafolio />} />
+        <Route
+          path="/trading"
+          element={
+            <Privada soloTrading>
+              <Trading />
+            </Privada>
+          }
+        />
         <Route path="/actividad" element={<Actividad />} />
         <Route path="/ajustes" element={<Ajustes />} />
         <Route

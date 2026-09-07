@@ -15,6 +15,13 @@ Azure Communication Services.
 | [`StockWatcher/`](StockWatcher/) | Vigila stock/talla/color de productos (Nike Mind, Yeezy, etc.) en decenas de tiendas y avisa cuando hay restock al precio correcto. | Email (ACS), WhatsApp listo en código pero sin activar | `systemd` timer horario |
 | [`PortfolioWatcher/`](PortfolioWatcher/) | Analiza el portafolio de inversión (riesgo/oportunidad) con un pipeline LLM de 2 niveles sobre Azure OpenAI; nunca ejecuta órdenes. | WhatsApp (ACS) | `systemd` timers 2x/día + semanal |
 | [`HomelabFrontend/`](HomelabFrontend/) *(antes `HomelabDashboard`)* | Panel web (FastAPI) para editar configs y disparar corridas manuales de las otras 2 apps desde el celular, sin SSH. | — | `systemd` service detrás de Caddy (HTTPS + Basic Auth) |
+| [`TradingLab/`](TradingLab/) | Supervisor de acciones y ETFs con demo local persistente de precios sintéticos. La ejecución Alpaca Paper permanece bloqueada hasta implementar conciliación durable de órdenes. | — (el panel muestra el estado) | `systemd` service permanente |
+
+El módulo de trading distingue `TradingLab/` para acciones y Freqtrade —de
+terceros, sin carpeta aquí— para cripto. El panel no presenta una intención
+guardada como prueba de que el motor la aplicó. No se habilitan órdenes contra
+servicios externos mientras sus adaptadores no garanticen el contrato.
+Ver [`HomelabFrontend/docs/trading.md`](HomelabFrontend/docs/trading.md).
 
 Cada carpeta tiene su propio `README.md`, `docs/`, tests y `pyproject.toml` —
 son paquetes Python independientes que solo comparten la VM y (donde aplica)
@@ -29,6 +36,12 @@ RAM libres de 4GB), y `systemd timers` es más simple de operar que
 Container Apps Jobs para este volumen — se evaluó Container Apps Job para
 StockWatcher (ver `StockWatcher/infra/`, hoy sin desplegar) pero se descartó
 por costo/complejidad frente a reusar la VM que PortfolioWatcher ya paga.
+
+**Capacidad para trading.** Se contempla `Standard_B2as_v2` (2 vCPU, 8 GiB) para
+los motores completos, pero el supervisor actual sin SDK cabe en la B2s y no
+justifica ampliarla todavía. Cada servicio tiene límites de recursos; el
+[despliegue de TradingLab](TradingLab/README.md#despliegue) documenta las rutas,
+el rollback y el costo estimado, sin prometer operativa Alpaca habilitada.
 
 ## Infraestructura (Terraform)
 
@@ -72,6 +85,9 @@ un tiempo, el secreto en sí ya no sirve.
 - `PortfolioWatcher/docs/architecture.md` — arquitectura completa, pipeline LLM.
 - `StockWatcher/docs/` — providers, WhatsApp template, discovery.
 - `HomelabFrontend/docs/deployment.md` — Caddy, DNS, systemd del dashboard.
+- `HomelabFrontend/docs/trading.md` — módulo de trading: contrato con los
+  motores, permisos, y qué hace falta en la VM.
+- `TradingLab/README.md` — el motor de acciones: estrategias, CLI, unidad systemd.
 - `docs/ci-cd.md` (raíz) — runner self-hosted + workflows.
 - `docs/stockwatcher-deployment.md` (raíz) — cómo se desplegó StockWatcher
   sobre la VM compartida (paso a paso real, incluye decisiones tomadas).
