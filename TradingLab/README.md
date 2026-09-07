@@ -184,24 +184,51 @@ credenciales se prueba de verdad, y el camino de Alpaca se valida en la VM con
 
 ## Despliegue
 
-Unidad de systemd, con lo que no es opcional:
+El workflow [deploy-tradinglab.yml](../.github/workflows/deploy-tradinglab.yml)
+instala el supervisor desde el SHA exacto de `main`, usando
+[`scripts/deploy.sh`](scripts/deploy.sh). No modifica el checkout ni el entorno
+Python del dashboard: cada despliegue tiene un venv propio bajo
+`/opt/services/tradinglab/releases/` y `current` apunta a la versión activa.
+Si falla el arranque, restaura la versión y unidades anteriores sin borrar datos.
 
-```ini
-[Service]
-Type=simple
-WorkingDirectory=/opt/tradinglab
-Environment=TRADINGLAB_DASHBOARD_DB=/var/lib/homelab/dashboard.db
-Environment=TRADINGLAB_DB=/var/lib/homelab/tradinglab.db
-Environment=LUMIBOT_DISABLE_DOTENV=1
-EnvironmentFile=/etc/tradinglab/secrets.env   # ALPACA_API_KEY, ALPACA_API_SECRET
-ExecStart=/opt/tradinglab/.venv/bin/tradinglab correr
-Restart=always
-RestartSec=30
-MemoryMax=600M
-KillSignal=SIGINT
-```
+Las unidades versionadas son la fuente de verdad:
 
-- `WorkingDirectory=` porque Lumibot escribe sus logs relativos al CWD.
-- `KillSignal=SIGINT` porque Lumibot instala su propio manejador de SIGINT y no
-  de SIGTERM. (TradingLab atiende ambas, pero esto evita depender de ello.)
-- `MemoryMax=` porque la VM la comparten cuatro aplicaciones.
+| Archivo | Función |
+|---|---|
+| [`systemd/tradinglab.service`](systemd/tradinglab.service) | Supervisor con límite de 900 MiB, una CPU y escritura restringida a su estado |
+| [`systemd/dashboard-tradinglab.conf`](systemd/dashboard-tradinglab.conf) | Drop-in que conecta el dashboard a la misma base de TradingLab |
+
+La base del dashboard sigue en
+`/opt/services/homelab/HomelabFrontend/dashboard.db` y se abre en solo lectura.
+El estado de producción reside en `/var/lib/tradinglab/tradinglab.db`, separado
+del código. **No ejecutes `--simulado` sobre esa base**: la demo usa precios
+sintéticos y debe conservar su propio archivo.
+
+El servicio arranca sin credenciales y no modifica la intención de encendido
+guardada en el panel. Alpaca permanece bloqueado mientras falten las garantías
+de reconciliación de órdenes; el despliegue instala únicamente el núcleo, no
+el SDK opcional. Las claves futuras irán en `/etc/tradinglab/secrets.env`
+(`root`, modo `0600`), nunca en Git ni en el dashboard.
+
+La comprobación de despliegue exige un latido posterior al reinicio y que el
+dashboard siga respondiendo. **Confirma vida del supervisor, no que Alpaca
+esté conectado ni que se puedan enviar órdenes.**
+
+### Capacidad y costo
+
+El 7 de septiembre de 2026 la VM `Standard_B2s` tenía unos 3 GiB de RAM
+disponibles y 22 GiB libres de disco. No hace falta ampliarla para este supervisor
+sin SDK. Para ambos motores completos se contempla `Standard_B2as_v2` (8 GiB).
+Precios públicos Linux PAYG East US, estimando 730 horas:
+
+| Concepto | B2s actual | B2as_v2 prevista |
+|---|---:|---:|
+| Cómputo | 30,37 USD/mes | 54,90 USD/mes |
+| Disco Standard HDD S4 | 1,54 | 1,54 |
+| IP Standard | 3,65 | 3,65 |
+| Total fijo estimado | **35,56** | **60,09** |
+
+Fuente: [Azure Retail Prices API](https://prices.azure.com/api/retail/prices).
+Son precios de lista, antes de impuestos, créditos o descuentos. Transacciones
+de disco, tráfico, ACS y OpenAI se facturan por uso y no están incluidos.
+No se contrataron reservas ni se amplió la VM.

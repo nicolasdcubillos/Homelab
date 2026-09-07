@@ -1,0 +1,41 @@
+[Unit]
+Description=TradingLab (supervisor de trading exclusivamente paper)
+After=network-online.target homelab-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/lib/tradinglab
+StateDirectory=tradinglab
+StateDirectoryMode=0700
+UMask=0077
+Environment=TRADINGLAB_DASHBOARD_DB=/opt/services/homelab/HomelabFrontend/dashboard.db
+Environment=TRADINGLAB_DB=/var/lib/tradinglab/tradinglab.db
+Environment=LUMIBOT_DISABLE_DOTENV=1
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/tradinglab/secrets.env
+ExecStart=/opt/services/tradinglab/current/.venv/bin/tradinglab correr
+Restart=on-failure
+RestartSec=15
+MemoryMax=900M
+CPUQuota=100%
+KillSignal=SIGTERM
+TimeoutStopSec=90
+
+# El dashboard crea una base privada de root. El supervisor puede leerla,
+# pero su espacio de escritura se limita a su propio estado.
+User=root
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
