@@ -15,11 +15,12 @@ from homelab_dashboard.market_regime.models import (
     RegimeSubscription,
 )
 from homelab_dashboard.market_regime.repository import (
+    events_as_of,
     freeze_model,
     observations_as_of,
     persist_payload,
 )
-from homelab_dashboard.market_regime.schemas import Observation
+from homelab_dashboard.market_regime.schemas import HorizonResult, Observation, OfficialEvent
 
 UTC = dt.timezone.utc
 PAST = dt.datetime(2026, 6, 1, 18, tzinfo=UTC)
@@ -97,6 +98,47 @@ def test_rechaza_nan_y_fechas_sin_zona():
         observation(value=Decimal("NaN"))
     with pytest.raises(ValidationError):
         observation(available_at=dt.datetime(2026, 6, 1))
+    with pytest.raises(ValidationError):
+        HorizonResult(horizon="SHORT", data_status="INCOMPLETO", score=50)
+
+
+def test_calendario_oficial_tambien_preserva_versiones(db):
+    event = OfficialEvent(
+        source_id="test",
+        event_id="meeting",
+        title="Reunion sintetica",
+        source_url="https://www.federalreserve.gov/test-fixture",
+        event_at=LATER,
+        available_at=PAST,
+        scheduled=True,
+        kind="meeting",
+    )
+    persist_payload(
+        db,
+        source_id="test",
+        source_url=event.source_url,
+        raw=b"calendar-v1-synthetic",
+        observations=[],
+        events=[event],
+        ingested_at=PAST,
+    )
+    changed = event.model_copy(
+        update={
+            "event_at": LATER + dt.timedelta(days=1),
+            "available_at": LATER,
+        }
+    )
+    persist_payload(
+        db,
+        source_id="test",
+        source_url=event.source_url,
+        raw=b"calendar-v2-synthetic",
+        observations=[],
+        events=[changed],
+        ingested_at=LATER,
+    )
+    assert events_as_of(db, PAST)[0].event_at == LATER
+    assert events_as_of(db, LATER)[0].event_at == LATER + dt.timedelta(days=1)
 
 
 def test_permiso_regimen_no_es_trading_y_borrado_preserva_raw(db):

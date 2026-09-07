@@ -3,6 +3,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { ProveedorAvisos } from "./components/Avisos";
@@ -23,6 +24,8 @@ import { Portafolio } from "./routes/Portafolio";
 import { Registro } from "./routes/Registro";
 import { Trading } from "./routes/Trading";
 import { Vigilancias } from "./routes/Vigilancias";
+
+const Regimen = lazy(() => import("./routes/Regimen").then((modulo) => ({ default: modulo.Regimen })));
 
 const cliente = new QueryClient({
   defaultOptions: {
@@ -45,10 +48,12 @@ function Privada({
   children,
   soloAdmin = false,
   soloTrading = false,
+  soloRegimen = false,
 }: {
   children: React.ReactNode;
   soloAdmin?: boolean;
   soloTrading?: boolean;
+  soloRegimen?: boolean;
 }) {
   const { data: sesion, isPending, isError } = useSesion();
   const ubicacion = useLocation();
@@ -73,6 +78,10 @@ function Privada({
   // responde 404 a quien no lo tiene. Redirigir en vez de dejar entrar evita
   // pintar una pantalla entera de errores para explicar «no tienes acceso».
   if (soloTrading && !sesion.user.trading_level) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (soloRegimen && !sesion.user.regime_level && sesion.user.role !== "admin") {
     return <Navigate to="/" replace />;
   }
 
@@ -137,6 +146,9 @@ function Rutas() {
           }
         />
         <Route path="/actividad" element={<Actividad />} />
+        <Route path="/regimen" element={
+          <Privada soloRegimen><Suspense fallback={<Cargando />}><Regimen /></Suspense></Privada>
+        } />
         <Route path="/ajustes" element={<Ajustes />} />
         <Route
           path="/admin"

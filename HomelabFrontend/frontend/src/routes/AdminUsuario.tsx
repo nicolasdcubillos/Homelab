@@ -32,6 +32,7 @@ import { mensajeDeError } from "@/lib/errores";
 import { CANAL, DESCRIPCION_ESTADO_USUARIO, DESCRIPCION_NIVEL_TRADING, DISPARADOR, ESTADO_EJECUCION, ESTADO_USUARIO, NIVEL_TRADING, ROL, TONO_EJECUCION } from "@/lib/etiquetas";
 import { cadaCuanto, fechaHora, plural, relativo } from "@/lib/formato";
 import type { EstadoEjecucion, EstadoUsuario, NivelTrading, Rol } from "@/lib/tipos";
+import { PermisoRegimen } from "@/components/regimen/PermisoRegimen";
 
 const TONO_ESTADO: Record<EstadoUsuario, "ok" | "aviso" | "neutro"> = {
   active: "ok",
@@ -335,6 +336,7 @@ export function AdminUsuario() {
         </Lista>
 
         <PermisoTrading id={id} esAdmin={user.role === "admin"} />
+        <PermisoRegimen id={id} esAdmin={user.role === "admin"} />
 
         {schedules.length > 0 && (
           <Lista titulo="Automatización">

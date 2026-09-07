@@ -76,6 +76,7 @@ class RegimeLicense(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     source_id: Mapped[str] = mapped_column(String(64), index=True)
     reference: Mapped[str] = mapped_column(Text)
+    evidence_sha256: Mapped[str | None] = mapped_column(String(64))
     permissions: Mapped[dict] = mapped_column(JSON)
     valid_until: Mapped[dt.datetime | None] = mapped_column(UtcDateTime)
     created_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
@@ -91,6 +92,12 @@ class RegimeRawPayload(Base):
     source_url: Mapped[str] = mapped_column(Text)
     compressed: Mapped[bytes] = mapped_column(LargeBinary)
     ingested_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class RegimePayloadLicense(Base):
+    __tablename__ = "regime_payload_licenses"
+    raw_id: Mapped[int] = mapped_column(ForeignKey("regime_raw_payloads.id"), primary_key=True)
+    license_id: Mapped[str] = mapped_column(ForeignKey("regime_licenses.id"))
 
 
 class RegimeObservation(Base):
@@ -123,6 +130,21 @@ class RegimeObservation(Base):
     source_url: Mapped[str] = mapped_column(Text)
     raw_hash: Mapped[str] = mapped_column(String(64))
     quality: Mapped[str] = mapped_column(String(16), default="OK")
+
+
+class RegimeEvent(Base):
+    __tablename__ = "regime_events"
+    __table_args__ = (
+        UniqueConstraint("source_id", "event_id", "raw_hash", name="uq_regime_event"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(64))
+    event_id: Mapped[str] = mapped_column(String(120))
+    raw_id: Mapped[int] = mapped_column(ForeignKey("regime_raw_payloads.id"))
+    raw_hash: Mapped[str] = mapped_column(String(64))
+    available_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, index=True)
+    ingested_at: Mapped[dt.datetime] = mapped_column(UtcDateTime, default=utcnow)
+    data: Mapped[dict] = mapped_column(JSON)
 
 
 class RegimeRun(Base):

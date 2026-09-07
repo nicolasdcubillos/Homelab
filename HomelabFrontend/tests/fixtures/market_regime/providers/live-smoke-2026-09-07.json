@@ -1,0 +1,86 @@
+{
+  "kind": "LIVE_OFFICIAL_NETWORK_EVIDENCE_NOT_A_TEST_FIXTURE",
+  "date_utc": "2026-09-07",
+  "credentials_used": false,
+  "persisted_to_database": false,
+  "note": "Metadata from actual public network calls; hashes cover received bytes. Unit tests use separately labelled synthetic payloads. The adapter does not write a database.",
+  "results": [
+    {
+      "source_id": "treasury",
+      "status": "DISPONIBLE",
+      "observations": 996,
+      "payloads": [
+        {
+          "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=2024",
+          "sha256": "0722b6084344fc5bd5203da138ef66cdababaa3a9f2e1ce6224fe5ae7e112683",
+          "bytes": 284423,
+          "observations": 156
+        },
+        {
+          "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=2025",
+          "sha256": "8cc3fcd1265591fc461855ff5dcbb7a6564275f74081396755191ef1ed313c3c",
+          "bytes": 345104,
+          "observations": 498
+        },
+        {
+          "source_url": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value=2026",
+          "sha256": "752e10faf251f97fd5135fc950c2383d5cda3393010192c3bfe90661d128e187",
+          "bytes": 264868,
+          "observations": 342
+        }
+      ]
+    },
+    {
+      "source_id": "fed",
+      "status": "DISPONIBLE",
+      "observations": 500,
+      "payloads": [
+        {
+          "source_url": "https://www.federalreserve.gov/releases/h10/hist/dat00_ja.htm",
+          "sha256": "05b186d14baba2c4bce58153cf95a592cc8ed56293cd3242e1fb95966b1b2f4b",
+          "bytes": 1126089,
+          "observations": 494
+        },
+        {
+          "source_url": "https://www.federalreserve.gov/releases/h15/",
+          "sha256": "2f5cc3b2f2312cc8b112fee0784d11a0d9fa71b2683e41af1152414e5478baed",
+          "bytes": 105952,
+          "observations": 5
+        },
+        {
+          "source_url": "https://www.federalreserve.gov/releases/h41/current/h41.htm",
+          "sha256": "0709ff10d54af5d4b370ae235259295b1c0df0373181f9283eb74631251bdb80",
+          "bytes": 702255,
+          "observations": 1
+        },
+        {
+          "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+          "sha256": "a927bbc3e92b6251f802a427024a1511e5abdb9e5c80ffb1c5aebcc53d9bf090",
+          "bytes": 164831,
+          "observations": 0,
+          "type": "document_links_only"
+        }
+      ]
+    },
+    {
+      "source_id": "bls",
+      "status": "DISPONIBLE",
+      "observations": 132,
+      "payloads": [
+        {
+          "source_url": "https://api.bls.gov/publicAPI/v2/timeseries/data/",
+          "sha256": "87c10b67d8c4d50fceb5f786ade8d2a9f603ba935e7fd9d840c004a09cc8e713",
+          "bytes": 17321,
+          "observations": 132
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Current revised history: published_at unknown, available_at set to actual ingestion.",
+    "H.15 contains five current daily observations; H.4.1 contains one current weekly observation.",
+    "BEA and FRED optional-key parsers tested synthetically; not network-tested with credentials.",
+    "Census and DOL deliberately NO_CONFIGURADO.",
+    "No licensed market datasets downloaded; global regime necessarily incomplete."
+  ]
+}

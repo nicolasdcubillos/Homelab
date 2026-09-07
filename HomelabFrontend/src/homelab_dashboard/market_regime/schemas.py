@@ -5,8 +5,9 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 from typing import Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Horizon = Literal["SHORT", "MEDIUM", "LONG"]
 DataStatus = Literal["SIN_DATOS", "INCOMPLETO", "COMPLETO"]
@@ -35,6 +36,14 @@ class Observation(Contract):
     source_url: str
     raw_hash: str = ""
     quality: Literal["OK", "CUARENTENA"] = "OK"
+
+    @field_validator("source_url")
+    @classmethod
+    def safe_source_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError("La fuente debe ser HTTPS sin credenciales.")
+        return value
 
     @field_validator("value")
     @classmethod
@@ -91,8 +100,8 @@ class Evidence(Contract):
 
 class CategoryResult(Contract):
     category: str
-    weight: float
-    value: float | None = None
+    weight: float = Field(ge=0, le=100)
+    value: float | None = Field(default=None, ge=-1, le=1)
     contribution: float | None = None
     reason: str
     evidence: list[Evidence] = Field(default_factory=list)
@@ -101,7 +110,7 @@ class CategoryResult(Contract):
 class HorizonResult(Contract):
     horizon: Horizon
     data_status: DataStatus
-    score: float | None = None
+    score: float | None = Field(default=None, ge=0, le=100)
     regime: Regime | None = None
     transition_status: Literal["ESTABLE", "EN_TRANSICION", "NO_EVALUABLE"] = "NO_EVALUABLE"
     previous_regime: Regime | None = None
@@ -114,6 +123,35 @@ class HorizonResult(Contract):
     would_change: list[str] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def no_score_without_data(self) -> HorizonResult:
+        if self.data_status != "COMPLETO" and (self.score is not None or self.regime is not None):
+            raise ValueError("No se emite score o regimen sin datos completos.")
+        return self
+
+
+class OfficialEvent(Contract):
+    source_id: str
+    event_id: str
+    title: str
+    source_url: str
+    event_at: dt.datetime
+    published_at: dt.datetime | None = None
+    available_at: dt.datetime
+    kind: Literal["release", "meeting", "minutes", "projection"] = "release"
+    scheduled: bool = False
+    timestamp_precision: Literal["exact", "date", "observed"] = "date"
+
+    @field_validator("source_url")
+    @classmethod
+    def safe_source_url(cls, value: str) -> str:
+        return Observation.safe_source_url(value)
+
+    @field_validator("event_at", "published_at", "available_at")
+    @classmethod
+    def aware_timestamp(cls, value: dt.datetime | None) -> dt.datetime | None:
+        return Observation.aware_timestamp(value)
+
 
 class SnapshotData(Contract):
     as_of: dt.datetime
@@ -122,6 +160,7 @@ class SnapshotData(Contract):
     coverage: list[CoverageItem]
     context: str
     mode: Literal["OPERACIONAL", "RECONSTRUCCION"] = "OPERACIONAL"
+    events: list[OfficialEvent] = Field(default_factory=list)
 
 
 class ReportSection(Contract):
@@ -131,6 +170,7 @@ class ReportSection(Contract):
 
 
 class ReportData(Contract):
+    snapshot_ids: list[str] = Field(default_factory=list)
     title: str
     brief: str
     sections: list[ReportSection]

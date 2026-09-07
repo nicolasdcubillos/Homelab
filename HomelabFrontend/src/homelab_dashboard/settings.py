@@ -17,8 +17,10 @@ Notas de diseño:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from .market_regime.settings import RegimeSettings, load_regime_settings
 
 DEFAULT_TIMEZONE = "America/Bogota"
 
@@ -90,6 +92,7 @@ class Settings:
     #: Tope de espera al hablar con un motor. Corto a propósito: un motor caído
     #: no debe dejar colgada una petición de la UI.
     trading_timeout_seconds: int
+    regime: RegimeSettings = field(default_factory=load_regime_settings)
 
     @property
     def users_dir(self) -> Path:

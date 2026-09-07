@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -37,6 +38,9 @@ from .models import (
 )
 from .runner import ErrorDeEjecucion, JobRunner
 from .settings import Settings
+
+if TYPE_CHECKING:
+    from .market_regime.dispatcher import RegimeDispatcher
 
 log = logging.getLogger(__name__)
 
@@ -96,17 +100,13 @@ def calcular_siguiente(
     return None
 
 
-def validar_programacion(
-    kind: str, interval_minutes: int | None, cron_expr: str | None
-) -> None:
+def validar_programacion(kind: str, interval_minutes: int | None, cron_expr: str | None) -> None:
     """Comprueba la coherencia antes de guardar."""
     if kind == SCHEDULE_INTERVAL:
         if interval_minutes is None:
             raise ErrorDeProgramacion("Indica cada cuántos minutos debe ejecutarse.")
         if interval_minutes < INTERVALO_MINIMO:
-            raise ErrorDeProgramacion(
-                f"El intervalo mínimo es de {INTERVALO_MINIMO} minutos."
-            )
+            raise ErrorDeProgramacion(f"El intervalo mínimo es de {INTERVALO_MINIMO} minutos.")
         if interval_minutes > INTERVALO_MAXIMO:
             raise ErrorDeProgramacion("El intervalo máximo es de 30 días.")
     elif kind == SCHEDULE_CRON:
@@ -121,11 +121,17 @@ class Scheduler:
     """Despachador de las programaciones de todos los usuarios."""
 
     def __init__(
-        self, settings: Settings, session_factory, runner: JobRunner
+        self,
+        settings: Settings,
+        session_factory,
+        runner: JobRunner,
+        *,
+        regime_dispatcher: RegimeDispatcher | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
         self.runner = runner
+        self.regime_dispatcher = regime_dispatcher
         self._sched: BackgroundScheduler | None = None
 
     # -- ciclo de vida ------------------------------------------------------
@@ -144,15 +150,24 @@ class Scheduler:
             coalesce=True,
             max_instances=1,
         )
+        if self.regime_dispatcher is not None:
+            self._sched.add_job(
+                self.regime_dispatcher.tick,
+                "interval",
+                seconds=self.settings.scheduler_tick_seconds,
+                id="market-regime",
+                coalesce=True,
+                max_instances=1,
+            )
         self._sched.start()
-        log.info(
-            "Scheduler activo, tick cada %ss", self.settings.scheduler_tick_seconds
-        )
+        log.info("Scheduler activo, tick cada %ss", self.settings.scheduler_tick_seconds)
 
     def shutdown(self) -> None:
         if self._sched is not None:
             self._sched.shutdown(wait=False)
             self._sched = None
+        if self.regime_dispatcher is not None:
+            self.regime_dispatcher.shutdown()
 
     # -- tick ---------------------------------------------------------------
 
@@ -178,9 +193,7 @@ class Scheduler:
                     if self._despachar(db, schedule, ahora):
                         lanzadas += 1
                 except Exception:
-                    log.exception(
-                        "Fallo al despachar la programación %s", schedule.id
-                    )
+                    log.exception("Fallo al despachar la programación %s", schedule.id)
                     db.rollback()
         return lanzadas
 
@@ -215,9 +228,7 @@ class Scheduler:
             return False
 
         if usuario.status != USER_ACTIVE:
-            self._omitir(
-                db, usuario, schedule, "La cuenta no está activa."
-            )
+            self._omitir(db, usuario, schedule, "La cuenta no está activa.")
             return False
 
         estado = config_service.evaluar_readiness(db, usuario, schedule.app_name)
@@ -270,9 +281,7 @@ class Scheduler:
         schedule.updated_at = utcnow()
 
     def proximas_de(self, db, user_id: str) -> dict[str, dt.datetime | None]:
-        filas = db.scalars(
-            select(Schedule).where(Schedule.user_id == user_id)
-        ).all()
+        filas = db.scalars(select(Schedule).where(Schedule.user_id == user_id)).all()
         return {f"{s.app_name}:{s.command_key}": s.next_run_at for s in filas}
 
 

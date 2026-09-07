@@ -1,0 +1,34 @@
+{
+  "kind": "LIVE_OFFICIAL_NETWORK_EVIDENCE_NOT_A_TEST_FIXTURE",
+  "date_utc": "2026-09-07",
+  "credentials_used": false,
+  "persisted_to_database": false,
+  "results": [
+    {
+      "source_id": "fed",
+      "status": "DISPONIBLE",
+      "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+      "raw_sha256": "d0d5afa47ee5503d286090938ee568163a11fe094a85332215a34e2f762f277d",
+      "raw_bytes": 164831,
+      "events": 76,
+      "collected_at": "2026-09-07T18:51:09.349465Z",
+      "next_meeting_date_ny": "2026-09-16",
+      "meeting_description": "15-16 September 2026, end of scheduled meeting",
+      "timestamp_precision": "date",
+      "note": "NY midnight encodes a date, not a real meeting/release time. Minutes use the Released date, not the meeting date embedded in their URL."
+    },
+    {
+      "source_id": "bea_calendar",
+      "status": "DISPONIBLE",
+      "source_url": "https://apps.bea.gov/API/signup/release_dates.json",
+      "discovery_url": "https://www.bea.gov/news/schedule",
+      "raw_sha256": "a6541c6003af77ce6d151d97f1503475bf63caccc305bad7a9300f934a95c752",
+      "raw_bytes": 9053,
+      "events": 136,
+      "collected_at": "2026-09-07T18:52:27.890072Z",
+      "next_scheduled_release": "2026-09-24T12:30:00Z",
+      "timestamp_precision": "exact",
+      "note": "Advertised schedule timestamps only. scheduled=true, published_at=null, available_at=collection time. file_last_updated is not used as a publication timestamp."
+    }
+  ]
+}

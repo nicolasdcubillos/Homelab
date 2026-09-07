@@ -31,6 +31,10 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.4",
 ]
+regime-notifications = [
+    "azure-communication-messages>=1.1.0,<2",
+    "azure-communication-email>=1.0.0,<2",
+]
 
 [project.scripts]
 homelab-dashboard = "homelab_dashboard.cli:main"

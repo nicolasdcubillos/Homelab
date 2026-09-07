@@ -7,6 +7,7 @@
  * dentro de cada pantalla.
  */
 
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 
 import { cx } from "@/lib/cx";
@@ -16,10 +17,13 @@ import {
   IconoAdmin,
   IconoAjustes,
   IconoInicio,
+  IconoMenuMas,
   IconoPortafolio,
+  IconoRegimen,
   IconoTrading,
   IconoVigilancia,
 } from "./iconos";
+import { Hoja } from "./Hoja";
 
 export type Seccion = {
   ruta: string;
@@ -52,10 +56,16 @@ export const SECCION_ADMIN: Seccion = {
   Icono: IconoAdmin,
 };
 
-function secciones(trading: boolean): Seccion[] {
-  if (!trading) return SECCIONES;
+const SECCION_REGIMEN: Seccion = {
+  ruta: "/regimen",
+  texto: "Régimen de mercado",
+  Icono: IconoRegimen,
+};
+
+function secciones(trading: boolean, regimen = false): Seccion[] {
   const posicion = SECCIONES.findIndex((s) => s.ruta === "/portafolio") + 1;
-  return [...SECCIONES.slice(0, posicion), SECCION_TRADING, ...SECCIONES.slice(posicion)];
+  return [...SECCIONES.slice(0, posicion), ...(trading ? [SECCION_TRADING] : []),
+    ...(regimen ? [SECCION_REGIMEN] : []), ...SECCIONES.slice(posicion)];
 }
 
 function esActiva(ruta: string, pathname: string): boolean {
@@ -64,16 +74,12 @@ function esActiva(ruta: string, pathname: string): boolean {
 
 /* ------------------------------------------------------------------ móvil -- */
 
-/**
- * Con trading y administración la barra llega a siete pestañas. En un teléfono
- * de 375 px eso deja unos 53 px por pestaña, menos de lo que ocupa la palabra
- * «Vigilancias». El `min-w-0` en el elemento y el `truncate` en la etiqueta
- * hacen que el texto se recorte en vez de empujar y romper la retícula: se
- * degrada, no se rompe. El icono sigue distinguiendo cada sección.
- */
-export function BarraPestanas({ admin, trading }: { admin: boolean; trading: boolean }) {
+export function BarraPestanas({ admin, trading, regimen = false }: { admin: boolean; trading: boolean; regimen?: boolean }) {
   const { pathname } = useLocation();
-  const lista = secciones(trading);
+  const [mas, setMas] = useState(false);
+  const lista = [...secciones(trading, regimen), ...(admin ? [SECCION_ADMIN] : [])];
+  const visibles = lista.length > 5 ? lista.slice(0, 4) : lista;
+  const adicionales = lista.length > 5 ? lista.slice(4) : [];
 
   const clases = (activa: boolean) =>
     cx(
@@ -83,6 +89,7 @@ export function BarraPestanas({ admin, trading }: { admin: boolean; trading: boo
     );
 
   return (
+    <>
     <nav
       aria-label="Secciones"
       className={cx(
@@ -91,36 +98,53 @@ export function BarraPestanas({ admin, trading }: { admin: boolean; trading: boo
       )}
     >
       <ul className="flex items-stretch">
-        {lista.map(({ ruta, texto, Icono }) => {
+        {visibles.map(({ ruta, texto, Icono }) => {
           const activa = esActiva(ruta, pathname);
           return (
             <li key={ruta} className="min-w-0 flex-1">
-              <NavLink to={ruta} aria-current={activa ? "page" : undefined} className={clases(activa)}>
+              <NavLink to={ruta} aria-label={texto} aria-current={activa ? "page" : undefined} className={clases(activa)}>
                 <Icono className="size-6 shrink-0" />
                 <span className="w-full truncate text-center text-caption2 leading-none font-medium">
-                  {texto}
+                  {ruta === "/regimen" ? "Régimen" : texto}
                 </span>
               </NavLink>
             </li>
           );
         })}
 
-        {admin && (
+        {adicionales.length > 0 && (
           <li className="min-w-0 flex-1">
-            <NavLink
-              to={SECCION_ADMIN.ruta}
-              aria-current={pathname.startsWith("/admin") ? "page" : undefined}
-              className={clases(pathname.startsWith("/admin"))}
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={mas}
+              onClick={() => setMas(true)}
+              className={cx(clases(adicionales.some((item) => esActiva(item.ruta, pathname))), "w-full")}
             >
-              <SECCION_ADMIN.Icono className="size-6 shrink-0" />
+              <IconoMenuMas className="size-6 shrink-0" />
               <span className="w-full truncate text-center text-caption2 leading-none font-medium">
-                Admin
+                Más
               </span>
-            </NavLink>
+            </button>
           </li>
         )}
       </ul>
     </nav>
+    <Hoja abierta={mas} onCerrar={() => setMas(false)} titulo="Más secciones">
+      <nav aria-label="Más secciones">
+        <ul className="space-y-1">
+          {adicionales.map(({ ruta, texto, Icono }) => <li key={ruta}>
+            <NavLink to={ruta} onClick={() => setMas(false)}
+              aria-current={esActiva(ruta, pathname) ? "page" : undefined}
+              className={cx("flex min-h-11 items-center gap-3 rounded-md px-3 py-3 text-body",
+                esActiva(ruta, pathname) ? "bg-accent-soft text-accent-quiet" : "text-fg hover:bg-neutral-soft")}>
+              <Icono className="size-5 shrink-0" />{texto}
+            </NavLink>
+          </li>)}
+        </ul>
+      </nav>
+    </Hoja>
+    </>
   );
 }
 
@@ -129,11 +153,13 @@ export function BarraPestanas({ admin, trading }: { admin: boolean; trading: boo
 export function BarraLateral({
   admin,
   trading,
+  regimen = false,
   email,
   pie,
 }: {
   admin: boolean;
   trading: boolean;
+  regimen?: boolean;
   email: string;
   pie: React.ReactNode;
 }) {
@@ -179,7 +205,7 @@ export function BarraLateral({
 
       <nav aria-label="Secciones" className="min-h-0 flex-1 overflow-y-auto px-3">
         <ul className="space-y-0.5">
-          {secciones(trading).map((seccion) => enlace(seccion, esActiva(seccion.ruta, pathname)))}
+          {secciones(trading, regimen).map((seccion) => enlace(seccion, esActiva(seccion.ruta, pathname)))}
         </ul>
 
         {admin && (
