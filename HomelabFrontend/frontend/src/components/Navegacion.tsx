@@ -69,7 +69,7 @@ function secciones(trading: boolean, regimen = false): Seccion[] {
 }
 
 function esActiva(ruta: string, pathname: string): boolean {
-  return ruta === "/" ? pathname === "/" : pathname.startsWith(ruta);
+  return pathname === ruta || (ruta !== "/" && pathname.startsWith(`${ruta}/`));
 }
 
 /* ------------------------------------------------------------------ móvil -- */
@@ -80,13 +80,18 @@ export function BarraPestanas({ admin, trading, regimen = false }: { admin: bool
   const lista = [...secciones(trading, regimen), ...(admin ? [SECCION_ADMIN] : [])];
   const visibles = lista.length > 5 ? lista.slice(0, 4) : lista;
   const adicionales = lista.length > 5 ? lista.slice(4) : [];
+  const masActiva = adicionales.some((item) => esActiva(item.ruta, pathname));
 
   const clases = (activa: boolean) =>
     cx(
-      "flex min-h-[3.25rem] flex-col items-center justify-center gap-0.5 px-0.5 pt-1.5 pb-1",
+      "flex min-h-16 flex-col items-center justify-center gap-1 px-0.5 py-1",
       "transition-colors duration-150",
       activa ? "text-accent" : "text-muted hover:text-fg",
     );
+  const marcoIcono = (activa: boolean) => cx(
+    "flex h-7 w-11 items-center justify-center rounded-lg transition-colors duration-150",
+    activa && "bg-accent-soft",
+  );
 
   return (
     <>
@@ -103,8 +108,8 @@ export function BarraPestanas({ admin, trading, regimen = false }: { admin: bool
           return (
             <li key={ruta} className="min-w-0 flex-1">
               <NavLink to={ruta} aria-label={texto} aria-current={activa ? "page" : undefined} className={clases(activa)}>
-                <Icono className="size-6 shrink-0" />
-                <span className="w-full truncate text-center text-caption2 leading-none font-medium">
+                <span className={marcoIcono(activa)}><Icono className="size-5 shrink-0" /></span>
+                <span className="w-full truncate text-center text-caption2 font-medium">
                   {ruta === "/regimen" ? "Régimen" : texto}
                 </span>
               </NavLink>
@@ -119,10 +124,10 @@ export function BarraPestanas({ admin, trading, regimen = false }: { admin: bool
               aria-haspopup="dialog"
               aria-expanded={mas}
               onClick={() => setMas(true)}
-              className={cx(clases(adicionales.some((item) => esActiva(item.ruta, pathname))), "w-full")}
+              className={cx(clases(masActiva), "w-full")}
             >
-              <IconoMenuMas className="size-6 shrink-0" />
-              <span className="w-full truncate text-center text-caption2 leading-none font-medium">
+              <span className={marcoIcono(masActiva)}><IconoMenuMas className="size-5 shrink-0" /></span>
+              <span className="w-full truncate text-center text-caption2 font-medium">
                 Más
               </span>
             </button>
@@ -150,6 +155,12 @@ export function BarraPestanas({ admin, trading, regimen = false }: { admin: bool
 
 /* ------------------------------------------------------------- escritorio -- */
 
+const GRUPOS = [
+  { titulo: "Panel", rutas: ["/", "/vigilancias", "/actividad"] },
+  { titulo: "Finanzas", rutas: ["/portafolio", "/trading", "/regimen"] },
+  { titulo: "Cuenta", rutas: ["/ajustes", "/admin"] },
+];
+
 export function BarraLateral({
   admin,
   trading,
@@ -164,6 +175,7 @@ export function BarraLateral({
   pie: React.ReactNode;
 }) {
   const { pathname } = useLocation();
+  const lista = [...secciones(trading, regimen), ...(admin ? [SECCION_ADMIN] : [])];
 
   const enlace = (seccion: Seccion, activa: boolean) => (
     <li key={seccion.ruta}>
@@ -171,15 +183,15 @@ export function BarraLateral({
         to={seccion.ruta}
         aria-current={activa ? "page" : undefined}
         className={cx(
-          "flex min-h-11 items-center gap-3 rounded-md px-3 text-subhead font-medium",
+          "relative flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-subhead",
           "transition-colors duration-150",
           activa
-            ? "bg-accent-soft text-accent-quiet"
+            ? "bg-accent-soft font-semibold text-accent-quiet before:absolute before:inset-y-3 before:left-0 before:w-0.5 before:rounded-full before:bg-accent"
             : "text-muted hover:bg-neutral-soft hover:text-fg",
         )}
       >
         <seccion.Icono className="size-5 shrink-0" />
-        {seccion.texto}
+        <span className="min-w-0 break-words">{seccion.texto}</span>
       </NavLink>
     </li>
   );
@@ -187,37 +199,37 @@ export function BarraLateral({
   return (
     <aside
       className={cx(
-        "fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-sunken",
+        "fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-surface",
         "lg:flex",
       )}
     >
-      <div className="flex h-16 shrink-0 items-center gap-2.5 px-5">
+      <div className="flex h-20 shrink-0 items-center gap-3 border-b border-line px-5">
         <span
           aria-hidden="true"
-          className="flex size-7 items-center justify-center rounded-md bg-accent text-on-accent"
+          className="flex size-9 items-center justify-center rounded-lg bg-accent text-on-accent"
         >
           <svg viewBox="0 0 16 16" fill="currentColor" className="size-4">
             <path d="M8 1.5 2.5 4.4v4.2c0 3.1 2.2 5.9 5.5 6.9 3.3-1 5.5-3.8 5.5-6.9V4.4L8 1.5Z" />
           </svg>
         </span>
-        <span className="text-body font-semibold tracking-tight">Homelab</span>
+        <div>
+          <p className="text-body font-semibold tracking-tight">Homelab</p>
+          <p className="text-caption text-muted">Panel de control</p>
+        </div>
       </div>
 
-      <nav aria-label="Secciones" className="min-h-0 flex-1 overflow-y-auto px-3">
-        <ul className="space-y-0.5">
-          {secciones(trading, regimen).map((seccion) => enlace(seccion, esActiva(seccion.ruta, pathname)))}
-        </ul>
-
-        {admin && (
-          <>
-            <p className="mt-6 mb-1.5 px-3 text-caption font-semibold tracking-wide text-faint uppercase">
-              Sistema
+      <nav aria-label="Secciones" className="min-h-0 flex-1 space-y-5 overflow-y-auto px-3 py-5">
+        {GRUPOS.map(({ titulo, rutas }) => (
+          <div key={titulo}>
+            <p className="mb-1.5 px-3 text-caption font-medium tracking-wide text-muted">
+              {titulo}
             </p>
-            <ul className="space-y-0.5">
-              {enlace(SECCION_ADMIN, pathname.startsWith("/admin"))}
+            <ul aria-label={titulo} className="space-y-1">
+              {lista.filter((seccion) => rutas.includes(seccion.ruta))
+                .map((seccion) => enlace(seccion, esActiva(seccion.ruta, pathname)))}
             </ul>
-          </>
-        )}
+          </div>
+        ))}
       </nav>
 
       <div className="shrink-0 border-t border-line p-3">

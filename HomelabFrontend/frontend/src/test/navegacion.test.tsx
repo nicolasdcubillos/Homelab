@@ -56,3 +56,37 @@ it("la barra lateral preserva todos los módulos autorizados", () => {
   expect(screen.getByRole("link", { name: "Trading" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Régimen de mercado" })).toBeInTheDocument();
 });
+
+it("agrupa los destinos por tarea y marca las rutas de segundo nivel", () => {
+  render(<MemoryRouter initialEntries={["/admin/usuarios/demo"]}>
+    <BarraLateral admin trading regimen email="fixture@example.test" pie={null} />
+  </MemoryRouter>);
+  const panel = screen.getByRole("list", { name: "Panel" });
+  const finanzas = screen.getByRole("list", { name: "Finanzas" });
+  const cuenta = screen.getByRole("list", { name: "Cuenta" });
+  expect(within(panel).getAllByRole("link").map((link) => link.textContent))
+    .toEqual(["Inicio", "Vigilancias", "Actividad"]);
+  expect(within(finanzas).getAllByRole("link").map((link) => link.textContent))
+    .toEqual(["Portafolio", "Trading", "Régimen de mercado"]);
+  expect(within(cuenta).getByRole("link", { name: "Administración" }))
+    .toHaveAttribute("aria-current", "page");
+  expect(within(cuenta).getByRole("link", { name: "Ajustes" })).not.toHaveAttribute("aria-current");
+});
+
+it("no muestra destinos restringidos en los grupos de escritorio", () => {
+  render(<MemoryRouter><BarraLateral admin={false} trading={false} regimen={false}
+    email="fixture@example.test" pie={null} /></MemoryRouter>);
+  expect(within(screen.getByRole("list", { name: "Finanzas" })).getAllByRole("link")).toHaveLength(1);
+  expect(within(screen.getByRole("list", { name: "Cuenta" })).getAllByRole("link")).toHaveLength(1);
+  expect(screen.queryByRole("link", { name: "Trading" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Régimen de mercado" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Administración" })).not.toBeInTheDocument();
+});
+
+it("no marca como activa una ruta que solo comparte un prefijo", () => {
+  render(<MemoryRouter initialEntries={["/admin-inexistente"]}>
+    <BarraLateral admin trading regimen email="fixture@example.test" pie={null} />
+  </MemoryRouter>);
+  expect(screen.getByRole("link", { name: "Administración" })).not.toHaveAttribute("aria-current");
+  expect(screen.getByRole("link", { name: "Administración" })).not.toHaveClass("bg-accent-soft");
+});

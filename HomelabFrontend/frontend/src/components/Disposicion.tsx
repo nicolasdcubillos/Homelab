@@ -34,6 +34,12 @@ export function Disposicion() {
 
   return (
     <div className="min-h-dvh bg-bg">
+      <a
+        href="#contenido"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-3 focus:text-on-accent"
+      >
+        Saltar al contenido
+      </a>
       <BarraLateral
         admin={admin}
         trading={trading}
@@ -72,7 +78,7 @@ export function Disposicion() {
           </div>
         )}
 
-        <main id="contenido">
+        <main id="contenido" tabIndex={-1}>
           <Outlet />
         </main>
       </div>

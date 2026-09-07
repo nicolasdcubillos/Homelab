@@ -63,6 +63,19 @@ toca los datos de otro.
   worker). Los watchers propiamente dichos siguen ejecutándose por subprocess,
   igual que antes.
 
+## Sistema visual
+
+El frontend comparte los tokens de `frontend/src/styles/theme.css`: texto base
+de 15 px, títulos de 18 a 28 px y metadatos desde 12 px, expresados en `rem` para
+respetar las preferencias del navegador. Los campos conservan al menos 16 px
+en dispositivos táctiles para evitar el zoom automático de iOS; los botones
+mantienen áreas táctiles de al menos 44 px.
+
+La cabecera mantiene el título y las acciones visibles al desplazarse. En
+escritorio, la navegación agrupa Panel, Finanzas y Cuenta; en móvil conserva
+cinco destinos visibles y el menú Más, según los permisos. Los temas claro y
+oscuro comparten jerarquía, indicadores de foco y contraste AA para texto.
+
 ## Seguridad
 
 - Autenticación propia (argon2id para contraseñas), rate limiting en login

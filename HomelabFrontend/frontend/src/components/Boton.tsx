@@ -3,7 +3,8 @@
  *
  * Los siete estados que exige un control real —normal, hover, foco, activo,
  * deshabilitado, cargando y destructivo— están resueltos aquí y no en cada
- * pantalla. La altura mínima es de 44 px porque este panel se usa con el dedo.
+ * pantalla. En táctil, el área mínima es de 44 px; con ratón, el botón
+ * pequeño puede ser más compacto.
  */
 
 import { forwardRef } from "react";
@@ -30,9 +31,9 @@ const TONOS: Record<TonoBoton, string> = {
 };
 
 const TAMANOS: Record<TamanoBoton, string> = {
-  sm: "min-h-9 px-3 text-subhead gap-1.5 rounded-md",
-  md: "min-h-11 px-4 text-body gap-2 rounded-lg",
-  lg: "min-h-12 px-5 text-body gap-2 rounded-lg",
+  sm: "min-h-11 min-w-11 px-3 text-subhead gap-1.5 rounded-md lg:pointer-fine:min-h-9 lg:pointer-fine:min-w-9",
+  md: "min-h-11 min-w-11 px-4 text-subhead gap-2 rounded-md",
+  lg: "min-h-12 min-w-12 px-5 text-body gap-2 rounded-md",
 };
 
 type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -84,7 +85,7 @@ export const Boton = forwardRef<HTMLButtonElement, Props>(function Boton(  {
       )}
       <span
         className={cx(
-          "inline-flex items-center gap-2",
+          "inline-flex min-w-0 items-center justify-center gap-2",
           cargando && "invisible",
         )}
       >

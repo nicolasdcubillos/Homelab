@@ -1,7 +1,7 @@
 /**
  * Lista agrupada con recuadro.
  *
- * Es el patrón de Ajustes de iOS: un encabezado en versalitas discretas, un
+ * Un encabezado discreto, un
  * bloque redondeado con filas separadas por líneas que no llegan al borde, y
  * una nota al pie que explica la consecuencia de lo que hay arriba. Encaja con
  * casi todo lo que este panel tiene que mostrar: pares clave/valor, ajustes e
@@ -25,9 +25,9 @@ export function Lista({ titulo, nota, children, className, accion }: ListaProps)
   return (
     <section className={cx("flex flex-col", className)}>
       {(titulo || accion) && (
-        <div className="flex min-h-8 items-end justify-between gap-3 px-4 pb-1.5 sm:px-1">
+        <div className="flex min-h-9 items-center justify-between gap-3 px-1 pb-2">
           {titulo && (
-            <h2 className="text-footnote font-semibold tracking-wide text-muted uppercase">
+            <h2 className="text-subhead font-semibold text-fg">
               {titulo}
             </h2>
           )}
@@ -104,14 +104,14 @@ export function FilaValor({
       {icono && <span className="shrink-0 text-muted">{icono}</span>}
 
       <span className="flex min-w-0 flex-1 flex-col text-left">
-        <span className={cx("text-body", TONOS_FILA[tono])}>{etiqueta}</span>
+        <span className={cx("break-words text-body font-medium", TONOS_FILA[tono])}>{etiqueta}</span>
         {descripcion && (
           <span className="mt-0.5 text-footnote text-muted">{descripcion}</span>
         )}
       </span>
 
       {valor !== undefined && valor !== null && (
-        <span className="shrink-0 text-right text-body text-muted">{valor}</span>
+        <span className="max-w-[45%] min-w-0 break-words text-right text-subhead text-muted">{valor}</span>
       )}
 
       {navegable && (

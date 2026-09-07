@@ -86,7 +86,7 @@ const CONTROL_BASE =
   "transition-[border-color,box-shadow] duration-150 " +
   "disabled:cursor-not-allowed disabled:bg-sunken disabled:text-muted";
 
-const CONTROL_NORMAL = "border-line-strong hover:border-fg/40";
+const CONTROL_NORMAL = "border-line-strong hover:border-fg/60 focus-visible:border-accent";
 const CONTROL_ERROR = "border-danger";
 
 /* --------------------------------------------------------------- texto ---- */

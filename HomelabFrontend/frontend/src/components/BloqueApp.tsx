@@ -103,9 +103,9 @@ export function BloqueApp({ app, comandoPrincipal }: Props) {
       />
 
       <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-title3 font-semibold tracking-tight">{app.display_name}</h2>
+            <h2 className="break-words text-title3 font-semibold tracking-tight">{app.display_name}</h2>
 
             <p className="mt-1 text-subhead text-muted">
               {app.last_run?.started_at ? (
@@ -127,7 +127,7 @@ export function BloqueApp({ app, comandoPrincipal }: Props) {
         </div>
 
         {app.next_run_at && !app.running && (
-          <p className="mt-3 flex items-center gap-1.5 text-subhead text-muted">
+          <p className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-subhead text-muted">
             <IconoReloj className="size-4 shrink-0" />
             Próxima{" "}
             <time dateTime={iso(app.next_run_at)} className="text-fg">

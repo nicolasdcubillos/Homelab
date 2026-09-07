@@ -1,6 +1,5 @@
 import { useState } from "react";
 
-import { Boton } from "@/components/Boton";
 import { Cargando } from "@/components/Cargando";
 import { Aviso, Vacio } from "@/components/Estados";
 import { Insignia } from "@/components/Insignia";
@@ -11,6 +10,7 @@ import { Historia } from "@/components/regimen/Historia";
 import { Informes } from "@/components/regimen/Informes";
 import { Operacion } from "@/components/regimen/Operacion";
 import { Preferencias } from "@/components/regimen/Preferencias";
+import { cx } from "@/lib/cx";
 import { fechaRegimen, usePermisoRegimen, useResumenRegimen } from "@/lib/regimen";
 
 function Resumen() {
@@ -62,10 +62,12 @@ export function Regimen() {
       <Aviso titulo="Modelo heurístico no validado">
         El score no es probabilidad de ganancias ni una recomendación de inversión. Sin cobertura suficiente, no se publica una clasificación.
       </Aviso>
-      <nav aria-label="Vistas de régimen" className="flex flex-wrap gap-2">
-        {SECCIONES.map(({ id, texto }) => <Boton key={id}
-          tono={seccion === id ? "primario" : "secundario"} aria-pressed={seccion === id}
-          onClick={() => setSeccion(id)}>{texto}</Boton>)}
+      <nav aria-label="Vistas de régimen" className="flex flex-wrap gap-1 rounded-lg border border-line bg-surface p-1">
+        {SECCIONES.map(({ id, texto }) => <button key={id} type="button"
+          className={cx("min-h-11 flex-auto rounded-md px-3 py-2 text-subhead transition-colors",
+            seccion === id ? "bg-accent-soft font-semibold text-accent-quiet" : "text-muted hover:bg-sunken hover:text-fg")}
+          aria-pressed={seccion === id}
+          onClick={() => setSeccion(id)}>{texto}</button>)}
       </nav>
       {seccion === "resumen" && <Resumen />}
       {seccion === "evidencia" && <Evidencia />}
