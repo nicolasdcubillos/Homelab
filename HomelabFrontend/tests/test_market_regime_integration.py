@@ -74,9 +74,7 @@ def test_corte_manual_post_http_y_semanal_fijo(db, settings, monkeypatch, weekly
             return original_coverage(session, configured, cutoff)
 
     monkeypatch.setattr(service, "coverage", coverage)
-    run = service.enqueue_run(
-        db, kind="report" if weekly else "ingest", cutoff=T0 if weekly else None
-    )
+    run = service.enqueue_run(db, kind="report" if weekly else "ingest")
     run.status = "EJECUTANDO"
     run.attempts, run.lease_until = 1, T1 + dt.timedelta(minutes=3)
     db.commit()
@@ -259,3 +257,37 @@ def test_informe_revalida_licencia_de_su_comparacion_anterior(db, settings):
     assert service.can_display_snapshot(db, current)
     assert not service.can_display_snapshot(db, prior)
     assert not service.can_display_report(db, report)
+
+
+def test_recopilacion_automatica_antes_del_corte_no_retrofecha(db, settings):
+    from dataclasses import replace
+    from unittest.mock import Mock
+
+    from homelab_dashboard.market_regime.dispatcher import RegimeDispatcher
+
+    config = service.get_config(db)
+    config.enabled = True
+    settings = replace(settings, regime=replace(settings.regime, enabled=True))
+    dispatcher = RegimeDispatcher(settings, make_session_factory(db.get_bind()), Mock())
+    dispatcher._enqueue(db, T0 - dt.timedelta(minutes=25))
+    db.flush()
+    runs = db.scalars(select(RegimeRun).where(RegimeRun.kind == "ingest")).all()
+    assert len(runs) == 2
+    assert all(run.cutoff is None for run in runs)
+    assert any(run.dedupe_key.startswith("preclose-ingest:") for run in runs)
+
+
+def test_reporte_automatico_no_descarga_despues_de_su_corte(db, settings, monkeypatch):
+    from unittest.mock import Mock
+
+    monkeypatch.setattr(service, "utcnow", lambda: T1)
+    collection = Mock(side_effect=AssertionError("No recopilar despues del corte fijo."))
+    monkeypatch.setattr(service, "ingest_sources", collection)
+    run = service.enqueue_run(db, kind="report", cutoff=T0)
+    run.status, run.attempts = "EJECUTANDO", 1
+    run.lease_until = T1 + dt.timedelta(minutes=3)
+    db.commit()
+    service.execute_run(make_session_factory(db.get_bind()), settings, run.id, attempt=1)
+    db.expire_all()
+    assert db.get(RegimeRun, run.id).status == "INCOMPLETO"
+    collection.assert_not_called()

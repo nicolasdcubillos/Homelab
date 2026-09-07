@@ -38,6 +38,12 @@ toca los datos de otro.
   que impiden estructuralmente el uso de dinero real. Ver
   [`docs/trading.md`](docs/trading.md) y, para el motor de acciones,
   [`../TradingLab/`](../TradingLab/README.md).
+- **Régimen de mercado**: evidencia macro-financiera compartida, tres horizontes,
+  historial point-in-time e informes semanales. Permisos propios `viewer` /
+  `operator`, suscripciones privadas y ejecución manual desde el panel. Sin
+  datos o licencias suficientes se abstiene: no inventa scores ni ejecuta
+  órdenes. Ver [`docs/market-regime.md`](docs/market-regime.md) y
+  [`docs/market-regime-sources.md`](docs/market-regime-sources.md).
 
 ## Arquitectura
 

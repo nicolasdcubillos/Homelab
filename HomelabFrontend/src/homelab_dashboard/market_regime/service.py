@@ -477,7 +477,7 @@ def execute_run(
             require_run_lease(db, run_id, attempt)
             run = db.get(RegimeRun, run_id)
             kind, cutoff = run.kind, run.cutoff
-        if kind in {"ingest", "report"}:
+        if kind == "ingest" or (kind == "report" and cutoff is None):
             result.update(
                 ingest_sources(
                     factory,

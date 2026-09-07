@@ -53,13 +53,17 @@ class RegimeDispatcher:
         if not settings.enabled or config is None or not config.enabled:
             return
         day = now.astimezone(NY).date()
-        requests = [("ingest", f"ingest:{day.isoformat()}", now)]
+        requests = [("ingest", f"ingest:{day.isoformat()}", None)]
         try:
             closing = session_close(day)
         except CalendarUnavailable:
             closing = None
-        if closing is not None and now >= closing + dt.timedelta(minutes=90):
-            requests.append(("snapshot", f"snapshot:{day.isoformat()}", closing))
+        if closing is not None:
+            cutoff = closing + dt.timedelta(minutes=90)
+            if closing + dt.timedelta(minutes=60) <= now < cutoff:
+                requests.append(("ingest", f"preclose-ingest:{day.isoformat()}", None))
+            if now >= cutoff:
+                requests.append(("snapshot", f"snapshot:{day.isoformat()}", cutoff))
         due = due_week(now)
         if due is not None:
             week, cutoff = due
