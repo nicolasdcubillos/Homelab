@@ -22,15 +22,16 @@ def _months(day: dt.date, count: int) -> dt.date:
     return dt.date(year, month + 1, min(day.day, calendar.monthrange(year, month + 1)[1]))
 
 
-def _forward_end(dates: list[dt.date], entry: int, horizon: str, count: int) -> int:
+def _forward_end(sessions: list[dt.date], entry: int, horizon: str, count: int) -> int:
+    """Resolve maturity on the verified calendar, never on available price rows."""
     if horizon == "SHORT":
         return entry + count
     end = (
-        dates[entry] + dt.timedelta(weeks=count)
+        sessions[entry] + dt.timedelta(weeks=count)
         if horizon == "MEDIUM"
-        else _months(dates[entry], count)
+        else _months(sessions[entry], count)
     )
-    return bisect_left(dates, end)
+    return bisect_left(sessions, end)
 
 
 def _embargo_start(
@@ -231,7 +232,11 @@ def run_backtest(
         for _, versions in sorted(price_versions.items())
     ]
     dates = [period_date(x) for x in prices]
-    timestamps = [x.observed_at for x in prices]
+    sessions = [dt.date.fromisoformat(x) for x in config["rules"]["verified_sessions"]]
+    price_by_date = dict(zip(dates, prices))
+    missing_prefix = [0]
+    for day in sessions:
+        missing_prefix.append(missing_prefix[-1] + int(day not in price_by_date))
     limitations = [
         "HEURISTICO_NO_VALIDADO: ejecucion retrospectiva no valida ni promociona el modelo.",
         "RECONSTRUCCION con vintages oficiales, no historia operacional de la aplicacion.",
@@ -240,8 +245,8 @@ def run_backtest(
         "Predicciones de bandas brutas; no simula ejecucion, costes ni ordenes.",
         "Sensibilidad de horizontes requiere corridas separadas, no se selecciona sobre el test.",
     ]
-    calendar_set = set(config["rules"]["verified_sessions"])
-    calendar_ok = bool(dates) and all(x.isoformat() in calendar_set for x in dates)
+    calendar_set = set(sessions)
+    calendar_ok = bool(dates) and all(day in calendar_set for day in dates)
     if not calendar_ok:
         limitations.append("CALENDARIO_NO_DISPONIBLE: sesiones SPX no verificadas completamente.")
     if excluded:
@@ -255,21 +260,42 @@ def run_backtest(
         target = config["horizons"][horizon]["target_bars"]
         samples = []
         immature = 0
+        missing_closes = 0
+        unverified = 0
         for index in range(0, max(0, len(prices) - 1), settings["sample_stride"]):
+            if dates[index] not in calendar_set:
+                unverified += 1
+                continue
             issued_at = max(prices[index].observed_at, prices[index].available_at)
-            entry = bisect_right(timestamps, issued_at)
-            if entry >= len(prices):
+            entry = bisect_left(sessions, issued_at.date())
+            if entry < len(sessions) and sessions[entry] == issued_at.date():
+                same_day_close = price_by_date.get(sessions[entry])
+                if same_day_close is None:
+                    missing_closes += 1
+                    continue
+                if same_day_close.observed_at <= issued_at:
+                    entry += 1
+            if entry >= len(sessions):
                 immature += 1
                 continue
-            end = _forward_end(dates, entry, horizon, target)
-            if (
-                end >= len(prices)
-                or prices[end].available_at > cutoff
-                or prices[end].observed_at > cutoff
-            ):
+            end = _forward_end(sessions, entry, horizon, target)
+            if end >= len(sessions):
+                if sessions[-1] >= cutoff.date():
+                    immature += 1
+                else:
+                    unverified += 1
+                continue
+            if sessions[end] > cutoff.date():
                 immature += 1
                 continue
-            path = [float(x.value) for x in prices[entry : end + 1]]
+            if missing_prefix[end + 1] != missing_prefix[entry]:
+                missing_closes += 1
+                continue
+            window = [price_by_date[day] for day in sessions[entry : end + 1]]
+            if window[-1].available_at > cutoff or window[-1].observed_at > cutoff:
+                immature += 1
+                continue
+            path = [float(x.value) for x in window]
             if issued_at not in snapshots:
                 snapshots[issued_at] = _calculate(
                     records,
@@ -281,13 +307,11 @@ def run_backtest(
             result = next(x for x in snapshots[issued_at].horizons if x.horizon == horizon)
             samples.append(
                 {
-                    "index": index,
+                    "index": entry - 1,
                     "issued_at": issued_at.isoformat(),
-                    "entry_at": prices[entry].observed_at.isoformat(),
-                    "label_end": prices[end].observed_at.isoformat(),
-                    "label_available_at": max(
-                        x.available_at for x in prices[entry : end + 1]
-                    ).isoformat(),
+                    "entry_at": window[0].observed_at.isoformat(),
+                    "label_end": window[-1].observed_at.isoformat(),
+                    "label_available_at": max(x.available_at for x in window).isoformat(),
                     "return": path[-1] / path[0] - 1,
                     "drawdown": drawdown(path)[0],
                     "score": result.score,
@@ -303,7 +327,7 @@ def run_backtest(
                 break
             fit_cutoff = test[0]["issued_at"]
             embargo_date = _embargo_start(
-                dates,
+                sessions,
                 test[0]["index"],
                 horizon,
                 settings["embargo_bars"][horizon],
@@ -355,6 +379,8 @@ def run_backtest(
             "eligible_folds": eligible_folds,
             "mature_samples": len(samples),
             "immature_excluded": immature,
+            "missing_closes_excluded": missing_closes,
+            "unverified_calendar_excluded": unverified,
             "effective_nonoverlapping": len(independent),
             "overlapping_classified": sum(x["prediction"] is not None for x in evaluated)
             - len(independent),

@@ -137,8 +137,11 @@ La recopilacion manual y diaria utiliza un corte **posterior** al HTTP, conserva
 minutos, sujetas al presupuesto local; esta ultima prepara el corte semanal.
 El informe automatico de corte fijo usa solo evidencia ya persistida: no descarga
 despues del corte para intentar completar retroactivamente la semana.
-Si hubo caida o ingestion tardia, se abstiene. Una recuperacion de mas de cinco
-minutos se etiqueta `RECONSTRUCCION` y no notifica ni avanza transiciones.
+Si hubo ingestion posterior al corte, esos datos se excluyen y pueden causar
+abstencion. El retraso de ejecucion no convierte un catch-up en backtest:
+conserva `OPERACIONAL`, corte fijo y fecha real de emision, y puede notificarse
+si cumple todos los permisos/consentimientos. No avanza estados posteriores
+al corte. `RECONSTRUCCION` queda reservada a reconstrucciones explicitas.
 
 La deduplicacion semanal evita crear varios reportes canonicos de la misma
 semana. La recuperacion tardia no desplaza el corte ni reescribe el pasado.
@@ -224,6 +227,9 @@ aprobar licencias por si mismo ni cargar URLs arbitrarias al servidor.
 El backtest usa todas las vintages elegibles, labels forward maduras por
 horizonte y separacion temporal. Sin licencias/vintages/historia/folds suficientes
 devuelve HISTORIA_INSUFICIENTE: pasar tests sinteticos no demuestra calibracion.
+Entrada, vencimiento y embargo se resuelven con el calendario verificado, no
+contando filas disponibles. Una ventana con cualquier cierre faltante se excluye
+en los tres horizontes; no se rellena ni alarga para alcanzar el numero de filas.
 No promociona un modelo automaticamente ni implementa una estrategia de trading.
 
 Los datos/canales/modelos se conservan en SQLite WAL. El control de disco puede

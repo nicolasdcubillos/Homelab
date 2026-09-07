@@ -256,9 +256,8 @@ def send(
             return SendResult("INCIERTO", provider_id, "Operación conocida; conciliar su estado.")
         return SendResult(result.status, provider_id, result.detail, result.retry_after)
     except ServiceRequestError:
-        if provider_id is not None:
-            return SendResult("INCIERTO", provider_id, "Operación conocida; conciliar su estado.")
-        return SendResult("ERROR_REINTENTABLE", provider_id, "No se pudo conectar con ACS.")
+        # RequestsTransport tambien usa esta excepcion si falla leer el body de un 202.
+        return SendResult("INCIERTO", provider_id, "Solicitud ambigua; requiere conciliación.")
     except (ServiceResponseError, TimeoutError):
         return SendResult("INCIERTO", provider_id, "Respuesta ambigua; requiere conciliación.")
     except (ValueError, TypeError, AttributeError):

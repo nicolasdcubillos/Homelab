@@ -194,7 +194,14 @@ def observations_as_of(
                 ),
                 order_by=(
                     RegimeObservation.available_at.desc(),
+                    func.coalesce(
+                        RegimeObservation.published_at,
+                        RegimeObservation.available_at,
+                    ).desc(),
                     RegimeObservation.ingested_at.desc(),
+                    RegimeObservation.vintage.desc(),
+                    RegimeObservation.source_id.desc(),
+                    RegimeObservation.raw_hash.desc(),
                     RegimeObservation.id.desc(),
                 ),
             )

@@ -280,14 +280,63 @@ def test_recopilacion_automatica_antes_del_corte_no_retrofecha(db, settings):
 def test_reporte_automatico_no_descarga_despues_de_su_corte(db, settings, monkeypatch):
     from unittest.mock import Mock
 
-    monkeypatch.setattr(service, "utcnow", lambda: T1)
+    from homelab_dashboard.market_regime.models import RegimeReport
+    from homelab_dashboard.market_regime.outbox import notification_allowed
+
+    late = T0 + dt.timedelta(minutes=6)
+    monkeypatch.setattr(service, "utcnow", lambda: late)
     collection = Mock(side_effect=AssertionError("No recopilar despues del corte fijo."))
     monkeypatch.setattr(service, "ingest_sources", collection)
     run = service.enqueue_run(db, kind="report", cutoff=T0)
     run.status, run.attempts = "EJECUTANDO", 1
-    run.lease_until = T1 + dt.timedelta(minutes=3)
+    run.lease_until = late + dt.timedelta(minutes=3)
     db.commit()
     service.execute_run(make_session_factory(db.get_bind()), settings, run.id, attempt=1)
     db.expire_all()
     assert db.get(RegimeRun, run.id).status == "INCOMPLETO"
+    report = db.get(RegimeReport, db.get(RegimeRun, run.id).result["report_id"])
+    snapshot = db.get(RegimeSnapshot, report.snapshot_id)
+    assert snapshot.mode == "OPERACIONAL" and snapshot.as_of == T0
+    assert notification_allowed(db, report, late)
     collection.assert_not_called()
+
+
+def test_revision_publicada_mas_nueva_gana_a_importacion_tardia(db):
+    from homelab_dashboard.market_regime.config import DEFAULT_CONFIG
+    from homelab_dashboard.market_regime.features import point_in_time
+    from homelab_dashboard.market_regime.repository import _observation, persist_payload
+
+    available = T0 + dt.timedelta(days=3)
+    for index, (value, publication) in enumerate(
+        (
+            ("5100", T0),
+            ("5000", T0 - dt.timedelta(days=1)),
+        )
+    ):
+        item = Observation(
+            source_id="licensed_market",
+            series_id="SPX",
+            period="2026-09-03",
+            value=value,
+            unit="index points",
+            frequency="daily",
+            observed_at=T0 - dt.timedelta(days=1),
+            published_at=publication,
+            available_at=available,
+            vintage=publication.date().isoformat(),
+            timestamp_precision="exact",
+            source_url="https://example.com/synthetic",
+        )
+        persist_payload(
+            db,
+            source_id=item.source_id,
+            source_url=item.source_url,
+            raw=value.encode(),
+            observations=[item],
+            ingested_at=available + dt.timedelta(seconds=index),
+        )
+    cutoff = available + dt.timedelta(minutes=1)
+    all_rows = [_observation(row) for row in db.scalars(select(RegimeObservation))]
+    selected, errors = point_in_time(all_rows, cutoff, DEFAULT_CONFIG)
+    assert not errors
+    assert observations_as_of(db, cutoff)[0].value == selected["SPX"][0].value == 5100

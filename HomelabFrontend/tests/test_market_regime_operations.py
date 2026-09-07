@@ -975,7 +975,7 @@ def test_acs_timeout_retains_actual_operation_and_never_assumes_delivery(azure):
 @pytest.mark.parametrize(
     ("error", "expected"),
     [
-        ("ServiceRequestError", "ERROR_REINTENTABLE"),
+        ("ServiceRequestError", "INCIERTO"),
         ("ServiceResponseError", "INCIERTO"),
     ],
 )

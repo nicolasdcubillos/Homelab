@@ -497,7 +497,6 @@ def execute_run(
                 db,
                 settings,
                 as_of,
-                reconstructed=kind == "report" and utcnow() - as_of > dt.timedelta(minutes=5),
             )
             result["snapshot_id"] = snapshot.id
             data = SnapshotData.model_validate(snapshot.data)
