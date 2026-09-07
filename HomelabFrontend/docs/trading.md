@@ -228,7 +228,7 @@ sin ningún error visible que explicara por qué.
 
 Es la consecuencia práctica de que la tolerancia sean **3 minutos** mientras el
 `timeframe` puede ser `1d`. Si el motor solo latiera al evaluar, un bot en velas
-diarias aparecería como caído 22 horas de cada 24.
+diarias aparecería como caído durante casi todo el día.
 
 TradingLab late **cada minuto** pase lo que pase —también en pausa, también tras
 un error— y evalúa el mercado cada `timeframe`. Efecto secundario deseable: el
@@ -301,32 +301,34 @@ SQLite escrita por `AlmacenEstado`, no solo una copia manual del esquema.
 
 Estos puntos no son opcionales; el bot comparte máquina con el dashboard.
 
-- **Tamaño de la VM.** `Standard_B2s` (2 vCPU, 4 GiB) no da para ambos motores
-  más el dashboard. `PortfolioWatcher/infra/variables.tf` pasa a
-  `Standard_B2as_v2` (2 vCPU, **8 GiB**, ≈ 54,90 USD/mes en East US, PAYG),
-  que cabe en el presupuesto de 150 USD/mes. Requiere `terraform apply`.
-- **Espacio en disco.** Lumibot arrastra **más de cincuenta dependencias
-  directas** (`pyarrow`, `polars`, `scipy`, `boto3`, `ccxt`, `duckdb`,
-  `matplotlib`…) y ocupa **varios cientos de megabytes**. El dimensionado hay que
-  revisarlo en disco, no solo en RAM.
+- **Tamaño de la VM.** El supervisor sin SDK cabe en la `Standard_B2s`
+  existente. El 7 de septiembre de 2026 tenía unos 3 GiB de RAM disponibles y
+  22 GiB de disco libres. La ampliación prevista a `Standard_B2as_v2` (8 GiB)
+  se aplaza hasta necesitar motores completos; no se aplicó ni se contrataron
+  reservas. Costo fijo estimado actual: 35,56 USD/mes; ampliada: 60,09 USD/mes,
+  antes de impuestos, créditos y consumos variables.
+- **Dependencias.** El despliegue instala solo el núcleo. El SDK Lumibot es
+  pesado y no habilita el adaptador bloqueado; no hace falta instalarlo.
 - **Límite de memoria.** Cada unidad `systemd` necesita `MemoryMax=`. Sin él, un
   motor con fuga de memoria tumba el dashboard entero.
-- **Directorio de trabajo.** La unidad de TradingLab necesita `WorkingDirectory=`:
-  Lumibot escribe sus logs relativos al CWD, y bajo systemd el CWD es `/`.
-- **Señal de parada.** Lumibot instala su propio manejador de **SIGINT**, no de
-  SIGTERM. TradingLab atiende ambas, pero conviene `KillSignal=SIGINT` para no
-  depender de ello.
-- **Escaneo de disco al importar.** Importar `lumibot.credentials` busca un
-  `.env` recorriendo el sistema de archivos. Se apaga con
-  `Environment=LUMIBOT_DISABLE_DOTENV=1`.
+- **Código y estado separados.** Versiones aisladas bajo
+  `/opt/services/tradinglab/releases/`; SQLite y directorio de trabajo bajo
+  `/var/lib/tradinglab/`. Un drop-in del dashboard apunta a la misma SQLite.
+- **Señal de parada.** La unidad envía SIGTERM y el supervisor interrumpe su
+  espera. No se importa Lumibot ni intervienen sus manejadores de señales.
 - **Secretos.** `DASHBOARD_FREQTRADE_USER`, `DASHBOARD_FREQTRADE_PASSWORD`,
   `ALPACA_API_KEY` y `ALPACA_API_SECRET` van en el entorno de la unidad, **nunca
   en la base de datos**: la configuración compartida la puede leer cualquier
-  usuario autorizado desde el panel.
+  usuario autorizado desde el panel. El supervisor actual no consume claves
+  Alpaca; añadirlas no desbloquea el adaptador.
 - **Exposición.** La documentación de Freqtrade pide explícitamente no exponer
   su API a internet: `listen_ip_address: 127.0.0.1`.
 - **Límites de instrumentos.** Freqtrade 15, TradingLab 25. No son arbitrarios:
   cada instrumento cuesta memoria y llamadas en una máquina compartida.
+
+El [runbook de TradingLab](../../TradingLab/README.md#despliegue) describe el
+workflow, las unidades versionadas, rollback y comprobación de latido. Un
+servicio vivo en pausa no demuestra conectividad ni operativa con un broker.
 
 ### Arrancar antes de tener credenciales
 
@@ -344,8 +346,8 @@ partir de un diagnóstico local satisfactorio.
 
 ### Implicación tributaria (Colombia)
 
-Operar a diario configura **habitualidad** ante la DIAN, lo que lleva las
-ganancias a renta ordinaria (hasta 39 %) en vez de ganancia ocasional. Aunque
-hoy todo sea simulado, si algún día se opera de verdad hará falta el histórico:
-**guardar la TRM del día junto a cada operación desde el primer día**.
-Reconstruirla después es mucho más caro que registrarla al vuelo.
+La simulación no genera por sí misma una ganancia realizada con dinero real.
+Una futura operativa real requiere revisar el tratamiento tributario aplicable
+con asesoría local: no se deduce una clasificación o tasa fiscal universal
+solo de operar a diario. El registro conserva la TRM disponible y explicita
+cuando falta; no sustituye la contabilidad ni calcula obligaciones ante la DIAN.
