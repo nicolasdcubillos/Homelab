@@ -164,6 +164,7 @@ class Supervisor:
             motor = self._obtener_motor(config)
         except Exception as exc:
             log.exception("no se pudo preparar el motor")
+            self._soltar_motor()
             self._latir(f"No se pudo conectar con el corredor: {exc}", estado="error")
             # Un fallo de conexión suele ser pasajero.
             return False
@@ -213,7 +214,7 @@ class Supervisor:
             resultado.abiertas,
             estado="error" if resultado.incidencias else "operando",
         )
-        return True
+        return not resultado.incidencias
 
     def _detectar_cambio(self, config: ConfigCompartida) -> None:
         if self._version_vista == config.version:

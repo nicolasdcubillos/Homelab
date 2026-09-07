@@ -77,6 +77,10 @@ La transaccion SQLite `BEGIN IMMEDIATE` abarca restauracion, ciclo, diario y
 avance de precios. Dos ciclos no leen simultaneamente un saldo anterior; un
 fallo revierte el ciclo y el siguiente restaura desde datos confirmados. Esto es
 valido porque **no hay efectos externos en demo**, no soluciona atomicidad Alpaca.
+El rollback tambien restaura los precios en memoria si aun no existia la primera
+instantanea. Saldo, costos y PnL demo usan precision monetaria de seis decimales:
+un residuo flotante al agotar el efectivo no bloquea el reinicio, pero un deficit
+real se rechaza.
 
 El simulador rechaza short, margen, cantidades fraccionarias/invalidas y precios
 no finitos. El deslizamiento se cobra en costos, no tambien en el precio. Las

@@ -284,6 +284,8 @@ class Ciclo:
             cierres = self.corredor.cierres(
                 instrumento, self.estrategia.velas_necesarias, self.config.timeframe
             )
+            if any(not math.isfinite(precio) or precio <= 0 for precio in cierres):
+                raise ErrorDeCorredor("el histórico contiene precios inválidos")
         except ErrorDeCorredor as exc:
             self._incidencia(f"sin datos de {instrumento}: {exc}")
             return None

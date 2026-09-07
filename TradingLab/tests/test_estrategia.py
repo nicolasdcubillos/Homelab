@@ -6,6 +6,9 @@ aritmética, no la integración.
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from tradinglab.estrategia import (
@@ -196,15 +199,29 @@ def test_los_identificadores_son_tecleables_en_el_celular() -> None:
 
 
 def test_el_catalogo_coincide_con_el_que_ofrece_el_dashboard() -> None:
-    """El panel ofrece una lista fija; si diverge, se elige algo inexistente.
-
-    `_ESTRATEGIAS_LUMIBOT` en `HomelabFrontend/src/homelab_dashboard/trading.py`
-    alimenta el selector de la pantalla de trading y su validación. Esa lista y
-    `DISPONIBLES` son el mismo contrato escrito dos veces, en dos procesos que
-    ni se importan entre sí. Se replica aquí a propósito: renombrar una
-    estrategia en un lado tiene que romper este test, no dejar al usuario
-    eligiendo un nombre que el motor no sabe construir.
-    """
-    assert set(DISPONIBLES) == {"cruce_medias", "reversion_rsi"}
-    assert DISPONIBLES["cruce_medias"].etiqueta == "Cruce de medias"
-    assert DISPONIBLES["reversion_rsi"].etiqueta == "Reversión RSI"
+    """Lee la declaración real sin instalar las dependencias del dashboard."""
+    ruta = (
+        Path(__file__).resolve().parents[2]
+        / "HomelabFrontend"
+        / "src"
+        / "homelab_dashboard"
+        / "trading.py"
+    )
+    arbol = ast.parse(ruta.read_text(encoding="utf-8"))
+    declaracion = next(
+        nodo.value
+        for nodo in arbol.body
+        if isinstance(nodo, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "_ESTRATEGIAS_LUMIBOT" for t in nodo.targets)
+    )
+    assert isinstance(declaracion, ast.Tuple)
+    publicado = {}
+    for entrada in declaracion.elts:
+        assert isinstance(entrada, ast.Call)
+        campos = {
+            campo.arg: ast.literal_eval(campo.value)
+            for campo in entrada.keywords
+            if campo.arg in {"nombre", "etiqueta"}
+        }
+        publicado[campos["nombre"]] = campos["etiqueta"]
+    assert {nombre: estrategia.etiqueta for nombre, estrategia in DISPONIBLES.items()} == publicado

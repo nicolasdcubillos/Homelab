@@ -8,6 +8,7 @@ mira.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, replace
 
 import pytest
@@ -588,3 +589,87 @@ def test_ciclo_demo_fallido_se_revierte_antes_del_reintento(almacen):
         assert not corredor.posiciones
 
     motor.ejecutar(comprobar)
+
+
+def test_fallar_primera_instantanea_revierte_tambien_los_precios(almacen):
+    almacen.vincular("simulado")
+    motor = MotorSimulado(CorredorSimulado(series={"AAPL": [100.0]}), almacen)
+
+    def denegar_instantanea(accion, tabla, *args):
+        if accion == sqlite3.SQLITE_INSERT and tabla == "estado_simulado":
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    almacen.conexion.set_authorizer(denegar_instantanea)
+    with pytest.raises(sqlite3.DatabaseError):
+        motor.ejecutar(lambda corredor: None)
+    almacen.conexion.set_authorizer(None)
+    assert motor.corredor.series == {"AAPL": [100.0]}
+    motor.ejecutar(
+        lambda corredor: _ciclo(
+            almacen,
+            corredor,
+            estrategia=EstrategiaFija(accion_fuera=ENTRAR),
+            config=_config(instrumentos=("AAPL",)),
+        ).ejecutar()
+    )
+    assert almacen.abiertas()[0].precio_entrada == 100.0
+
+
+def test_saldo_agotado_no_bloquea_restauracion_por_error_flotante(almacen):
+    almacen.vincular("simulado")
+    identificador = almacen.registrar_apertura(Apertura("A", COMPRA, 6, 143.9301, 0.43179))
+    almacen.registrar_cierre(identificador, precio_salida=141.8626, costos_salida=0.425588)
+    almacen.registrar_apertura(Apertura("B", COMPRA, 1, 986.2445, 0.493122))
+    saldo, posiciones, _ = almacen.restaurar_simulacion(1000)
+    assert saldo == 0
+    assert posiciones == {"B": 1}
+
+
+def test_deficit_real_no_se_oculta_como_redondeo(almacen):
+    almacen.vincular("simulado")
+    almacen.registrar_apertura(Apertura("AAPL", COMPRA, 1, 1000.01))
+    with pytest.raises(ValueError, match="saldo simulado"):
+        almacen.restaurar_simulacion(1000)
+
+
+def test_cambio_de_configuracion_entre_ordenes_revierte_el_ciclo_demo(almacen):
+    from tradinglab.config import ErrorDeConfig
+
+    almacen.vincular("simulado")
+    motor = MotorSimulado(
+        CorredorSimulado(series={"AAPL": [100], "MSFT": [100]}),
+        almacen,
+    )
+    permisos = 0
+
+    def permiso():
+        nonlocal permisos
+        permisos += 1
+        if permisos == 2:
+            raise ErrorDeConfig("pausado desde el panel")
+
+    with pytest.raises(ErrorDeConfig):
+        motor.ejecutar(
+            lambda corredor: _ciclo(
+                almacen,
+                corredor,
+                estrategia=EstrategiaFija(accion_fuera=ENTRAR),
+                comprobar_permiso=permiso,
+            ).ejecutar()
+        )
+    assert permisos == 2
+    assert not almacen.abiertas()
+
+
+def test_datos_no_finitos_no_se_convierten_en_senal(almacen):
+    corredor = CorredorFijo({"AAPL": 100})
+    corredor.cierres = lambda *args: [float("nan")] * 60
+    resultado = _ciclo(
+        almacen,
+        corredor,
+        estrategia=EstrategiaFija(accion_fuera=ENTRAR),
+        config=_config(instrumentos=("AAPL",)),
+    ).ejecutar()
+    assert resultado.incidencias
+    assert not corredor.compras

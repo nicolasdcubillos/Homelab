@@ -21,6 +21,7 @@ import logging
 import math
 import random
 from collections.abc import Callable, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Protocol, TypeVar
 
@@ -213,7 +214,7 @@ class CorredorSimulado:
         if signo == -1 and cantidad > tenidas:
             raise ErrorDeCorredor("cantidad de venta superior a la posición; no se permite short")
         # El precio es de referencia y el deslizamiento se descuenta SOLO en costos.
-        self.saldo -= signo * importe + costo
+        self.saldo = round(self.saldo - signo * importe - costo, 6)
         self.posiciones[instrumento] = tenidas + signo * cantidad
         return Ejecucion(
             instrumento=instrumento,
@@ -265,17 +266,23 @@ class MotorSimulado:
             return tarea(self.corredor)
         # El diario y los precios avanzan juntos. Tras caída/rollback, restaurar
         # reconstruye efectivo y tenencias antes de permitir otra orden.
-        with self.almacen.transaccion_simulada():
-            saldo, posiciones, series = self.almacen.restaurar_simulacion(self.capital_inicial)
-            self.corredor.saldo = saldo
-            self.corredor.posiciones = posiciones
-            self.corredor._abierto = True
-            if series is not None:
-                self.corredor.series = series
-            resultado = tarea(self.corredor)
-            self.corredor.avanzar()
-            self.almacen.guardar_series(self.corredor.series)
-            return resultado
+        series_anteriores = deepcopy(self.corredor.series)
+        try:
+            with self.almacen.transaccion_simulada():
+                saldo, posiciones, series = self.almacen.restaurar_simulacion(self.capital_inicial)
+                self.corredor.saldo = saldo
+                self.corredor.posiciones = posiciones
+                self.corredor._abierto = True
+                if series is not None:
+                    self.corredor.series = series
+                resultado = tarea(self.corredor)
+                self.corredor.avanzar()
+                self.almacen.guardar_series(self.corredor.series)
+                return resultado
+        except BaseException:
+            # También restaurar el primer ciclo: todavía no existe snapshot en SQLite.
+            self.corredor.series = series_anteriores
+            raise
 
     def cerrar(self) -> None:
         self.corredor.cerrar()

@@ -266,19 +266,23 @@ class AlmacenEstado:
             )
         else:
             capital = float(fila["capital_inicial"])
-        saldo = capital
+        flujos = [capital]
         posiciones: dict[str, float] = {}
         for operacion in self.conexion.execute("SELECT * FROM operaciones"):
             if operacion["lado"] != COMPRA:
                 raise ValueError("La simulación no admite posiciones cortas.")
             if operacion["cerrada_en"] is not None:
-                saldo += float(operacion["pnl_absoluto"])
+                flujos.append(float(operacion["pnl_absoluto"]))
             else:
                 cantidad = float(operacion["cantidad"])
                 posiciones[operacion["instrumento"]] = (
                     posiciones.get(operacion["instrumento"], 0.0) + cantidad
                 )
-                saldo -= cantidad * float(operacion["precio_entrada"]) + float(operacion["costos"])
+                flujos.append(
+                    -cantidad * float(operacion["precio_entrada"]) - float(operacion["costos"])
+                )
+        # Misma precisión monetaria que los costos y el saldo del simulador.
+        saldo = round(math.fsum(flujos), 6)
         _validar_numero(saldo, "saldo simulado")
         instantanea = self.conexion.execute(
             "SELECT series_json FROM estado_simulado WHERE id = 1"
@@ -376,7 +380,7 @@ class AlmacenEstado:
         entrada = float(fila["precio_entrada"])
         costos = float(fila["costos"] or 0.0) + float(costos_salida)
         bruto = (float(precio_salida) - entrada) * cantidad * signo
-        neto = bruto - costos
+        neto = round(bruto - costos, 6)
         expuesto = abs(entrada * cantidad)
         pct = (neto / expuesto * 100.0) if expuesto else 0.0
 

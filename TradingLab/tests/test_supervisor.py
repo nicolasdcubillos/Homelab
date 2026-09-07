@@ -465,3 +465,19 @@ def test_pausa_con_posiciones_no_promete_stop_loss(db_dashboard, almacen):
     assert latido["estado"] == "pausado"
     assert "stops sin supervisión" in latido["detalle"]
     assert almacen.abiertas()
+
+
+def test_error_de_ciclo_no_se_convierte_en_espera_diaria(db_dashboard, almacen):
+    from tradinglab.estado import VENTA, Apertura
+
+    escribir_config(db_dashboard, datos={**CONFIG_BASE, "timeframe": "1d"})
+    almacen.registrar_apertura(Apertura("AAPL", VENTA, 1, 100))
+    motor = MotorEspia()
+    reloj = Reloj()
+    supervisor = _supervisor(LectorDashboard(db_dashboard), almacen, motor, reloj)
+    supervisor.tick()
+    assert almacen.ultimo_latido()["estado"] == "error"
+    reloj.ahora += 60
+    supervisor.tick()
+    assert almacen.ultimo_latido()["estado"] == "error"
+    assert motor.ejecuciones == 2
