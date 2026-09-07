@@ -21,21 +21,20 @@ Dos modelos de control, una sola interfaz
 Esa diferencia de naturaleza obliga a dos mecanismos de control distintos, y
 conviene tenerlo claro porque es la asimetría central del módulo:
 
-- **Freqtrade es imperativo**: el dashboard le *ordena* arrancar o parar por
-  HTTP (`POST /api/v1/start` y `/stop`) y le pregunta el estado. La verdad vive
-  en el proceso de Freqtrade.
+- **Freqtrade es imperativo**: se consulta por HTTP y solo se permite solicitar
+  parada tras confirmar PAPER. El arranque está bloqueado: no existe un puente
+  que aplique la configuración del dashboard al proceso.
 - **TradingLab es declarativo**: el dashboard solo escribe la *intención* en
   `trading_bot_config.enabled`, y el proceso de TradingLab la consulta en cada
-  ciclo y se ajusta. La verdad vive en nuestra base; TradingLab publica su
-  latido (heartbeat) en su propia SQLite para que sepamos si sigue vivo.
+  ciclo y se ajusta. La intención vive en nuestra base; el estado observado y
+  la versión procesada se publican en el latido de su propia SQLite.
 
 `AdaptadorTrading` esconde las dos formas tras los mismos cinco métodos, de
 modo que la API y la UI no sepan cuál es cuál.
 
 Por qué nunca hay dinero real
 -----------------------------
-El módulo opera solo con dinero simulado, y eso se sostiene en **tres capas
-independientes** para que ningún descuido aislado las atraviese:
+El módulo solo admite PAPER. No certifica la configuración de procesos externos:
 
 1. **El esquema**: `trading_bot_config.mode` tiene un `CHECK` que solo admite
    `'paper'`. La base misma rechaza almacenar otra cosa (ver la migración
@@ -43,8 +42,9 @@ independientes** para que ningún descuido aislado las atraviese:
 2. **La validación**: `validar_config` rechaza cualquier clave que huela a
    ejecución real (`dry_run`, claves de API, `trading_mode`...), así que no se
    pueden colar por el JSON de configuración.
-3. **La generación**: `config_freqtrade` fija `dry_run: True` en el JSON que
-   se le entrega al motor, sin leerlo de la configuración del usuario.
+3. **El control cerrado**: Freqtrade no arranca desde el panel; sus lecturas y
+   parada exigen `dry_run is True`. `config_freqtrade` genera un borrador PAPER,
+   pero nadie lo aplica: no constituye una barrera de ejecución.
 
 Es el mismo principio que en PortfolioWatcher ("nunca se genera una orden
 ejecutable"), llevado a un módulo que sí opera: aquí se opera, pero contra una
@@ -68,9 +68,11 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import re
 import sqlite3
-from dataclasses import dataclass, field
+from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -117,8 +119,8 @@ class EstrategiaSpec:
 
 #: Estrategias que trae TradingLab. Duplican los `nombre` de
 #: `tradinglab.estrategia.DISPONIBLES`: son un contrato entre dos procesos, y el
-#: precio de que se desincronicen es que el bot ignore la elección en silencio y
-#: siga con la que traía. Los tests de TradingLab vigilan esta lista.
+#: precio de que se desincronicen es rechazar una elección válida o guardar una
+#: que el motor no construye. Un test compara contra el productor real del monorepo.
 _ESTRATEGIAS_LUMIBOT = (
     EstrategiaSpec(
         nombre="cruce_medias",
@@ -162,6 +164,8 @@ class MotorSpec:
     #: saber cuáles existen y deja el campo abierto. Cuando la lista sí está,
     #: la UI muestra un selector y el backend rechaza cualquier otro valor.
     estrategias: tuple[EstrategiaSpec, ...] = ()
+    permite_encender: bool = False
+    motivo_bloqueo: str = "Este motor todavía no tiene un control seguro implementado."
 
 
 _PATRON_PAR = re.compile(r"^[A-Z0-9]{2,10}/[A-Z0-9]{2,10}$")
@@ -179,6 +183,10 @@ FREQTRADE = MotorSpec(
     timeframes=("1m", "5m", "15m", "30m", "1h", "4h", "1d"),
     max_instrumentos=15,
     simula_contra="Binance (datos públicos, sin claves)",
+    motivo_bloqueo=(
+        "Activación bloqueada: la configuración guardada no se aplica a Freqtrade "
+        "y el freno de pérdida diaria no está integrado."
+    ),
 )
 
 LUMIBOT = MotorSpec(
@@ -191,8 +199,10 @@ LUMIBOT = MotorSpec(
     ejemplo_instrumento="AAPL",
     timeframes=("5m", "15m", "30m", "1h", "1d"),
     max_instrumentos=25,
-    simula_contra="Alpaca Paper",
+    simula_contra="Simulador local; Alpaca Paper bloqueado preventivamente",
     estrategias=_ESTRATEGIAS_LUMIBOT,
+    permite_encender=True,
+    motivo_bloqueo="",
 )
 
 MOTORES: dict[str, MotorSpec] = {
@@ -214,8 +224,8 @@ def es_motor_conocido(bot_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 #: Claves que jamás se aceptan en la configuración, con el motivo que se le
-#: muestra a quien lo intente. Son la segunda de las tres capas que impiden
-#: operar con dinero real (ver el docstring del módulo). Se rechazan de forma
+#: muestra a quien lo intente. Protegen la configuración compartida, no certifican
+#: la de procesos externos (ver el docstring del módulo). Se rechazan de forma
 #: explícita, y no ignorándolas en silencio, para que quede claro que es una
 #: decisión de diseño y no un olvido.
 CLAVES_PROHIBIDAS = {
@@ -273,6 +283,8 @@ def validar_config(spec: MotorSpec, datos: dict[str, Any]) -> dict[str, Any]:
     for clave, motivo in CLAVES_PROHIBIDAS.items():
         if clave in datos:
             campos[clave] = motivo
+    for clave in datos.keys() - CONFIG_POR_DEFECTO.keys() - CLAVES_PROHIBIDAS.keys():
+        campos[clave] = "Este campo no forma parte de la configuración admitida."
 
     limpio: dict[str, Any] = {}
     singular, plural = spec.termino_instrumento
@@ -284,10 +296,13 @@ def validar_config(spec: MotorSpec, datos: dict[str, Any]) -> dict[str, Any]:
     else:
         vistos: list[str] = []
         for bruto in crudos:
-            texto = str(bruto).strip().upper()
+            if not isinstance(bruto, str):
+                campos["instrumentos"] = f"Cada {singular} debe ser texto."
+                break
+            texto = bruto.strip().upper()
             if not texto:
                 continue
-            if not spec.patron_instrumento.match(texto):
+            if not spec.patron_instrumento.fullmatch(texto):
                 campos["instrumentos"] = (
                     f"«{texto}» no es un {singular} válido. "
                     f"Se espera algo como {spec.ejemplo_instrumento}."
@@ -305,15 +320,16 @@ def validar_config(spec: MotorSpec, datos: dict[str, Any]) -> dict[str, Any]:
 
     # --- estrategia ---
     # Vacío siempre vale: significa "la que traiga el motor por defecto".
-    estrategia = str(datos.get("estrategia", "")).strip()
+    cruda = datos.get("estrategia", "")
+    estrategia = cruda.strip() if isinstance(cruda, str) else ""
+    if not isinstance(cruda, str):
+        campos["estrategia"] = "La estrategia debe ser texto."
     if not estrategia:
         pass
     elif spec.estrategias:
         conocidas = {e.nombre for e in spec.estrategias}
         if estrategia not in conocidas:
-            # No se acepta un nombre desconocido «por si acaso»: el motor lo
-            # ignoraría y seguiría operando con otra estrategia sin decir nada,
-            # que es la peor forma posible de fallar en algo que mueve dinero.
+            # No se acepta una elección que el productor no sabe construir.
             campos["estrategia"] = "Elige una de las estrategias disponibles: " + ", ".join(
                 f"{e.nombre} ({e.etiqueta})" for e in spec.estrategias
             )
@@ -334,11 +350,14 @@ def validar_config(spec: MotorSpec, datos: dict[str, Any]) -> dict[str, Any]:
     # --- numéricos con rango ---
     for clave, (minimo, maximo, etiqueta) in _LIMITES_NUMERICOS.items():
         try:
-            valor = float(datos.get(clave, CONFIG_POR_DEFECTO[clave]))
+            crudo = datos.get(clave, CONFIG_POR_DEFECTO[clave])
+            if isinstance(crudo, bool) or not isinstance(crudo, (int, float)):
+                raise ValueError
+            valor = float(crudo)
         except (TypeError, ValueError):
             campos[clave] = f"{etiqueta} debe ser un número."
             continue
-        if not minimo <= valor <= maximo:
+        if not math.isfinite(valor) or not minimo <= valor <= maximo:
             campos[clave] = (
                 f"{etiqueta} debe estar entre {_es(minimo)} y {_es(maximo)}."
             )
@@ -347,7 +366,9 @@ def validar_config(spec: MotorSpec, datos: dict[str, Any]) -> dict[str, Any]:
 
     # --- posiciones abiertas ---
     try:
-        posiciones = int(datos.get("max_posiciones_abiertas", 3))
+        posiciones = datos.get("max_posiciones_abiertas", 3)
+        if type(posiciones) is not int:
+            raise ValueError
     except (TypeError, ValueError):
         campos["max_posiciones_abiertas"] = "Debe ser un número entero."
     else:
@@ -376,10 +397,9 @@ def validar_config(spec: MotorSpec, datos: dict[str, Any]) -> dict[str, Any]:
 def config_freqtrade(config: dict[str, Any], *, estrategia_por_defecto: str) -> dict[str, Any]:
     """Traduce la configuración compartida al JSON que espera Freqtrade.
 
-    `dry_run` se fija aquí a `True` de forma literal y **no** se lee de
-    `config`: es la tercera de las tres capas que impiden operar con dinero
-    real. Aunque alguien lograra escribir `dry_run: false` en la base saltándose
-    el `CHECK` y la validación, este archivo lo sobreescribiría igual.
+    Solo genera un borrador: ninguna ruta lo instala ni recarga el motor. No
+    integra el freno diario y no debe usarse como prueba de configuración
+    aplicada. `dry_run` se fija a `True`, sin leerlo del usuario.
     """
     return {
         "dry_run": True,
@@ -416,12 +436,15 @@ class EstadoMotor:
     corriendo: bool
     detalle: str
     modo: str = TRADING_MODE_PAPER
-    posiciones_abiertas: int = 0
+    posiciones_abiertas: int | None = None
     version: str | None = None
+    estado: str = "desconocido"
+    config_version: int | None = None
+    latido_en: str | None = None
 
     @classmethod
     def caido(cls, detalle: str) -> EstadoMotor:
-        return cls(alcanzable=False, corriendo=False, detalle=detalle)
+        return cls(alcanzable=False, corriendo=False, detalle=detalle, modo="desconocido")
 
 
 @dataclass(frozen=True)
@@ -463,7 +486,7 @@ class Rendimiento:
     #: Comisiones y deslizamiento ya descontados por el motor. Se expone aparte
     #: porque un backtest que los ignora miente sistemáticamente a favor, y
     #: verlos es lo que hace creíble al resto de la tabla.
-    costos_simulados: float = 0.0
+    costos_simulados: float | None = None
 
     @property
     def win_rate(self) -> float | None:
@@ -481,6 +504,7 @@ class Rendimiento:
             operaciones_cerradas=0,
             ganadoras=0,
             perdedoras=0,
+            costos_simulados=0.0,
         )
 
 
@@ -558,6 +582,15 @@ class AdaptadorFreqtrade:
 
     transporte: TransporteHttp
 
+    def _config_paper(self) -> dict[str, Any]:
+        config = self.transporte.get("show_config")
+        if not isinstance(config, dict) or config.get("dry_run") is not True:
+            raise ErrorDeMotor(
+                "El motor NO está en modo simulado confirmado. "
+                "No se enviaron órdenes; revisa su configuración."
+            )
+        return config
+
     def estado(self) -> EstadoMotor:
         try:
             config = self.transporte.get("show_config")
@@ -567,26 +600,26 @@ class AdaptadorFreqtrade:
                 "No responde. Revisa que el servicio esté arriba en la VM."
             )
 
-        estado_crudo = str(config.get("state", "")).lower()
-        corriendo = estado_crudo == "running"
-
-        # Cinturón y tirantes: si el motor dijera que NO está en dry-run,
-        # tratamos eso como una anomalía grave y no como un estado normal.
-        # Preferimos alarmar en la UI antes que mostrar como simulada una
-        # cartera que no lo es.
-        if config.get("dry_run") is False:
-            log.error("freqtrade reporta dry_run=false; se marca como no operable")
+        if not isinstance(config, dict) or config.get("dry_run") is not True:
             return EstadoMotor(
                 alcanzable=True,
                 corriendo=False,
                 detalle=(
-                    "El motor NO está en modo simulado. Se bloqueó por seguridad: "
-                    "revisa su configuración en la VM antes de continuar."
+                    "El motor NO está en modo simulado confirmado. "
+                    "Control bloqueado; esto no significa que el proceso se haya detenido."
                 ),
                 modo="desconocido",
+                estado="bloqueado",
             )
 
-        abiertas = 0
+        estado_crudo = config.get("state")
+        if not isinstance(estado_crudo, str):
+            estado_crudo = ""
+        corriendo = estado_crudo == "running"
+        observado = {"running": "operando", "stopped": "pausado"}.get(
+            estado_crudo, "desconocido"
+        )
+        abiertas = None
         try:
             estado_trades = self.transporte.get("status")
             if isinstance(estado_trades, list):
@@ -598,28 +631,54 @@ class AdaptadorFreqtrade:
         return EstadoMotor(
             alcanzable=True,
             corriendo=corriendo,
-            detalle="Operando" if corriendo else "En pausa",
+            detalle=(
+                f"Estado observado: {observado}. "
+                "La configuración del dashboard no se ha aplicado a este motor."
+                + (" No se pudieron consultar las posiciones abiertas." if abiertas is None else "")
+            ),
             posiciones_abiertas=abiertas,
             version=config.get("version"),
+            estado=observado,
         )
 
     def encender(self) -> None:
-        self.transporte.post("start")
+        raise ErrorDeMotor(FREQTRADE.motivo_bloqueo)
 
     def apagar(self) -> None:
+        self._config_paper()
         self.transporte.post("stop")
 
     def operaciones(self, limite: int = 50) -> list[Operacion]:
+        self._config_paper()
         datos = self.transporte.get("trades", {"limit": limite})
-        crudas = datos.get("trades", []) if isinstance(datos, dict) else (datos or [])
-        return [_operacion_freqtrade(t) for t in crudas]
+        abiertas = self.transporte.get("status")
+        if (
+            not isinstance(datos, dict) or not isinstance(datos.get("trades"), list)
+            or not isinstance(abiertas, list)
+        ):
+            raise ErrorDeMotor("Freqtrade devolvió operaciones con formato inválido.")
+        try:
+            operaciones = [_operacion_freqtrade(t) for t in [*abiertas, *datos["trades"]]]
+            return sorted(
+                operaciones, key=lambda op: op.abierta_en or "", reverse=True
+            )[:limite]
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:
+            raise ErrorDeMotor("Freqtrade devolvió una operación ilegible.") from exc
 
     def rendimiento(self, capital_inicial: float) -> Rendimiento:
+        self._config_paper()
         datos = self.transporte.get("profit")
-        cerradas = int(datos.get("closed_trade_count", 0) or 0)
-        ganadoras = int(datos.get("winning_trades", 0) or 0)
-        perdedoras = int(datos.get("losing_trades", 0) or 0)
-        pnl = float(datos.get("profit_closed_coin", 0.0) or 0.0)
+        try:
+            cerradas = _entero_no_negativo(datos["closed_trade_count"])
+            ganadoras = _entero_no_negativo(datos["winning_trades"])
+            perdedoras = _entero_no_negativo(datos["losing_trades"])
+            pnl = _numero_finito(datos["profit_closed_coin"])
+            # El capital guardado en el panel NO es el capital aplicado al motor.
+            capital_inicial = _numero_finito(datos["starting_balance"])
+            if capital_inicial <= 0 or ganadoras + perdedoras > cerradas:
+                raise ValueError
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ErrorDeMotor("Freqtrade devolvió resultados incompletos o inválidos.") from exc
         return Rendimiento(
             capital_inicial=capital_inicial,
             capital_actual=capital_inicial + pnl,
@@ -634,19 +693,36 @@ class AdaptadorFreqtrade:
 
 
 def _float_o_none(valor: Any) -> float | None:
-    try:
-        return float(valor)
-    except (TypeError, ValueError):
+    if valor is None:
         return None
+    return _numero_finito(valor)
+
+
+def _numero_finito(valor: Any) -> float:
+    if isinstance(valor, bool):
+        raise ValueError("Se esperaba un número, no un booleano.")
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        raise ValueError("Número ilegible.") from None
+    if not math.isfinite(numero):
+        raise ValueError("Número no finito.")
+    return numero
+
+
+def _entero_no_negativo(valor: Any) -> int:
+    if type(valor) is not int or valor < 0:
+        raise ValueError("Se esperaba un entero no negativo.")
+    return valor
 
 
 def _operacion_freqtrade(cruda: dict[str, Any]) -> Operacion:
     cerrada = cruda.get("close_date")
     return Operacion(
-        instrumento=str(cruda.get("pair", "")),
+        instrumento=str(cruda["pair"]),
         lado="venta" if cruda.get("is_short") else "compra",
-        cantidad=float(cruda.get("amount", 0.0) or 0.0),
-        precio_entrada=float(cruda.get("open_rate", 0.0) or 0.0),
+        cantidad=_numero_finito(cruda["amount"]),
+        precio_entrada=_numero_finito(cruda["open_rate"]),
         precio_salida=_float_o_none(cruda.get("close_rate")),
         pnl_absoluto=_float_o_none(cruda.get("profit_abs")),
         # Freqtrade expresa el ratio en tanto por uno; la UI habla en porcentaje.
@@ -678,15 +754,10 @@ class AdaptadorTradingLab:
     #: Intención declarada por el dashboard, para poder explicar en la UI la
     #: diferencia entre "lo pedimos" y "el proceso todavía no se ha enterado".
     habilitado: bool = False
-    #: Minutos sin latido tras los que se considera caído. Generoso a
-    #: propósito: TradingLab late una vez por ciclo, y un ciclo diario es
-    #: legítimo.
-    tolerancia_latido_min: int = 90
-    _conexion: sqlite3.Connection | None = field(default=None, init=False, repr=False)
+    #: El supervisor late cada minuto, independientemente del timeframe.
+    tolerancia_latido_min: int = 3
 
     def _abrir(self) -> sqlite3.Connection:
-        if self._conexion is not None:
-            return self._conexion
         if not self.db_path.exists():
             raise ErrorDeMotor(
                 "TradingLab todavía no ha creado su base de estado. "
@@ -694,32 +765,46 @@ class AdaptadorTradingLab:
             )
         try:
             conexion = sqlite3.connect(
-                f"file:{self.db_path}?mode=ro", uri=True, timeout=5.0
+                f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5.0
             )
             conexion.row_factory = sqlite3.Row
         except sqlite3.Error as exc:
             raise ErrorDeMotor(f"No se pudo leer el estado de TradingLab: {exc}") from exc
-        self._conexion = conexion
         return conexion
 
-    def cerrar(self) -> None:
-        if self._conexion is not None:
-            self._conexion.close()
-            self._conexion = None
+    def _leer(self, consulta: str, parametros: tuple = ()) -> list[sqlite3.Row]:
+        try:
+            with closing(self._abrir()) as conexion:
+                return conexion.execute(consulta, parametros).fetchall()
+        except sqlite3.Error as exc:
+            raise ErrorDeMotor(f"No se pudo leer el estado de TradingLab: {exc}") from exc
 
     def estado(self) -> EstadoMotor:
         try:
-            conexion = self._abrir()
-            fila = conexion.execute(
-                "SELECT latido_en, detalle, posiciones_abiertas, version "
+            filas = self._leer(
+                "SELECT * "
                 "FROM estado_motor ORDER BY latido_en DESC LIMIT 1"
-            ).fetchone()
-        except (ErrorDeMotor, sqlite3.Error) as exc:
+            )
+        except ErrorDeMotor as exc:
             log.warning("tradinglab inalcanzable: %s", exc)
             return EstadoMotor.caido(str(exc))
 
-        if fila is None:
+        if not filas:
             return EstadoMotor.caido("TradingLab no ha reportado estado todavía.")
+        fila = filas[0]
+        try:
+            posiciones = _entero_no_negativo(fila["posiciones_abiertas"])
+            observado = fila["estado"] if "estado" in fila.keys() else "desconocido"
+            if observado not in {
+                "operando", "pausado", "esperando", "detenido", "error", "bloqueado",
+            }:
+                observado = "desconocido"
+            version = fila["config_version"] if "config_version" in fila.keys() else None
+            if version is not None:
+                version = _entero_no_negativo(version)
+            modo = fila["modo"] if "modo" in fila.keys() else None
+        except (ValueError, KeyError, IndexError):
+            return EstadoMotor.caido("TradingLab publicó un estado inválido.")
 
         fresco = _latido_fresco(fila["latido_en"], self.tolerancia_latido_min)
         if not fresco:
@@ -728,17 +813,35 @@ class AdaptadorTradingLab:
                 corriendo=False,
                 detalle=(
                     f"Sin señales desde {fila['latido_en']}. "
-                    "El proceso puede estar caído."
+                    f"Estado obsoleto o fecha inválida. Último detalle: {fila['detalle']}"
                 ),
-                posiciones_abiertas=int(fila["posiciones_abiertas"] or 0),
+                estado="stale",
+                version=fila["version"],
+                config_version=version,
+                latido_en=fila["latido_en"],
             )
+        detalle = str(fila["detalle"] or "Sin detalle del motor.")
+        if modo == "alpaca_paper":
+            detalle += (
+                " Alpaca Paper está bloqueado preventivamente para ejecutar operaciones; "
+                "este aviso no sustituye el estado observado del supervisor."
+            )
+        elif modo != "simulado":
+            observado = "desconocido"
+            detalle += " El origen de ejecución no está confirmado."
+        if observado == "desconocido":
+            detalle += " El motor no publica estado observacional; ejecución sin confirmar."
 
         return EstadoMotor(
-            alcanzable=True,
-            corriendo=self.habilitado,
-            detalle="Operando" if self.habilitado else "En pausa",
-            posiciones_abiertas=int(fila["posiciones_abiertas"] or 0),
+            alcanzable=observado != "detenido",
+            corriendo=modo == "simulado" and observado == "operando",
+            modo="paper" if modo in {"simulado", "alpaca_paper"} else "desconocido",
+            detalle=detalle,
+            posiciones_abiertas=posiciones,
             version=fila["version"],
+            estado=observado,
+            config_version=version,
+            latido_en=fila["latido_en"],
         )
 
     def encender(self) -> None:
@@ -748,22 +851,19 @@ class AdaptadorTradingLab:
         """No-op deliberado: ver `encender`."""
 
     def operaciones(self, limite: int = 50) -> list[Operacion]:
-        conexion = self._abrir()
-        try:
-            filas = conexion.execute(
-                "SELECT instrumento, lado, cantidad, precio_entrada, precio_salida, "
-                "pnl_absoluto, pnl_pct, abierta_en, cerrada_en "
-                "FROM operaciones ORDER BY abierta_en DESC LIMIT ?",
-                (limite,),
-            ).fetchall()
-        except sqlite3.Error as exc:
-            raise ErrorDeMotor(f"No se pudieron leer las operaciones: {exc}") from exc
+        self._identidad_simulada()
+        filas = self._leer(
+            "SELECT instrumento, lado, cantidad, precio_entrada, precio_salida, "
+            "pnl_absoluto, pnl_pct, abierta_en, cerrada_en "
+            "FROM operaciones ORDER BY abierta_en DESC LIMIT ?",
+            (limite,),
+        )
         return [
             Operacion(
                 instrumento=fila["instrumento"],
                 lado=fila["lado"],
-                cantidad=float(fila["cantidad"] or 0.0),
-                precio_entrada=float(fila["precio_entrada"] or 0.0),
+                cantidad=_numero_finito(fila["cantidad"]),
+                precio_entrada=_numero_finito(fila["precio_entrada"]),
                 precio_salida=_float_o_none(fila["precio_salida"]),
                 pnl_absoluto=_float_o_none(fila["pnl_absoluto"]),
                 pnl_pct=_float_o_none(fila["pnl_pct"]),
@@ -774,24 +874,28 @@ class AdaptadorTradingLab:
         ]
 
     def rendimiento(self, capital_inicial: float) -> Rendimiento:
-        conexion = self._abrir()
+        identidad = self._identidad_simulada()
         try:
-            fila = conexion.execute(
-                "SELECT COUNT(*) AS cerradas, "
-                "COALESCE(SUM(pnl_absoluto), 0) AS pnl, "
-                "COALESCE(SUM(costos), 0) AS costos, "
-                "SUM(CASE WHEN pnl_absoluto > 0 THEN 1 ELSE 0 END) AS ganadoras, "
-                "SUM(CASE WHEN pnl_absoluto <= 0 THEN 1 ELSE 0 END) AS perdedoras, "
-                "MAX(pnl_pct) AS mejor, MIN(pnl_pct) AS peor "
-                "FROM operaciones WHERE cerrada_en IS NOT NULL"
-            ).fetchone()
-        except sqlite3.Error as exc:
-            raise ErrorDeMotor(f"No se pudo calcular el rendimiento: {exc}") from exc
+            capital_inicial = _numero_finito(identidad["capital_inicial"])
+            if capital_inicial <= 0:
+                raise ValueError
+        except (ValueError, KeyError, IndexError) as exc:
+            raise ErrorDeMotor("El motor no ha confirmado su capital inicial simulado.") from exc
+        filas = self._leer(
+            "SELECT COUNT(*) AS cerradas, "
+            "COALESCE(SUM(pnl_absoluto), 0) AS pnl, "
+            "COALESCE(SUM(costos), 0) AS costos, "
+            "SUM(CASE WHEN pnl_absoluto > 0 THEN 1 ELSE 0 END) AS ganadoras, "
+            "SUM(CASE WHEN pnl_absoluto <= 0 THEN 1 ELSE 0 END) AS perdedoras, "
+            "MAX(pnl_pct) AS mejor, MIN(pnl_pct) AS peor "
+            "FROM operaciones WHERE cerrada_en IS NOT NULL"
+        )
+        fila = filas[0] if filas else None
 
         if fila is None or not fila["cerradas"]:
             return Rendimiento.vacio(capital_inicial)
 
-        pnl = float(fila["pnl"] or 0.0)
+        pnl = _numero_finito(fila["pnl"])
         return Rendimiento(
             capital_inicial=capital_inicial,
             capital_actual=capital_inicial + pnl,
@@ -802,26 +906,32 @@ class AdaptadorTradingLab:
             perdedoras=int(fila["perdedoras"] or 0),
             mejor_pct=_float_o_none(fila["mejor"]),
             peor_pct=_float_o_none(fila["peor"]),
-            costos_simulados=float(fila["costos"] or 0.0),
+            costos_simulados=_numero_finito(fila["costos"]),
         )
+
+    def _identidad_simulada(self) -> sqlite3.Row:
+        filas = self._leer("SELECT * FROM identidad_motor WHERE id = 1")
+        if not filas or filas[0]["modo"] != "simulado":
+            raise ErrorDeMotor("La base no identifica un simulador local aislado.")
+        return filas[0]
 
 
 def _latido_fresco(latido: Any, tolerancia_min: int) -> bool:
     """¿El último latido cae dentro de la ventana de tolerancia?
 
-    Ante una marca de tiempo ilegible se responde `True`: preferimos mostrar el
-    estado que reportó el motor a declararlo caído por un problema de formato.
+    Una fecha ilegible, sin zona o futura no confirma actividad.
     """
     if not latido:
         return False
     try:
-        momento = dt.datetime.fromisoformat(str(latido))
+        momento = dt.datetime.fromisoformat(str(latido).replace("Z", "+00:00"))
     except ValueError:
         log.debug("latido de tradinglab ilegible: %r", latido)
-        return True
+        return False
     if momento.tzinfo is None:
-        momento = momento.replace(tzinfo=dt.timezone.utc)
-    return (utcnow() - momento) <= dt.timedelta(minutes=tolerancia_min)
+        return False
+    antiguedad = utcnow() - momento
+    return dt.timedelta(seconds=-5) <= antiguedad <= dt.timedelta(minutes=tolerancia_min)
 
 
 def construir_adaptador(spec: MotorSpec, settings, *, habilitado: bool) -> AdaptadorTrading:

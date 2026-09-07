@@ -980,6 +980,8 @@ export interface components {
          */
         BotTradingOut: {
             config: components["schemas"]["ConfigTradingOut"];
+            /** Config Aplicada */
+            config_aplicada: boolean;
             /** Enabled */
             enabled: boolean;
             estado: components["schemas"]["EstadoMotorOut"];
@@ -1179,14 +1181,23 @@ export interface components {
         EstadoMotorOut: {
             /** Alcanzable */
             alcanzable: boolean;
+            /** Config Version */
+            config_version?: number | null;
             /** Corriendo */
             corriendo: boolean;
             /** Detalle */
             detalle: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "desconocido" | "operando" | "pausado" | "esperando" | "detenido" | "error" | "bloqueado" | "stale";
+            /** Latido En */
+            latido_en?: string | null;
             /** Modo */
             modo: string;
             /** Posiciones Abiertas */
-            posiciones_abiertas: number;
+            posiciones_abiertas: number | null;
             /** Version */
             version?: string | null;
         };
@@ -1350,6 +1361,10 @@ export interface components {
             estrategias: components["schemas"]["EstrategiaInfoOut"][];
             /** Max Instrumentos */
             max_instrumentos: number;
+            /** Motivo Bloqueo */
+            motivo_bloqueo: string;
+            /** Permite Encender */
+            permite_encender: boolean;
             /** Proyecto */
             proyecto: string;
             /** Simula Contra */
@@ -1650,7 +1665,7 @@ export interface components {
             /** Capital Inicial */
             capital_inicial: number;
             /** Costos Simulados */
-            costos_simulados: number;
+            costos_simulados: number | null;
             /**
              * Disponible
              * @default true

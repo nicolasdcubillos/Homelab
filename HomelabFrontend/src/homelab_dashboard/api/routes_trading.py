@@ -26,8 +26,11 @@ la UI muestra ambas cosas cuando difieren.
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from fastapi import APIRouter, Query, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.dialects.sqlite import insert
 
 from .. import trading
 from ..admin import registrar
@@ -61,13 +64,17 @@ def _fila(db, spec: trading.MotorSpec) -> TradingBotConfig:
     fila = db.get(TradingBotConfig, spec.bot_name)
     if fila is not None:
         return fila
-    fila = TradingBotConfig(
-        bot_name=spec.bot_name,
-        enabled=False,
-        config_json=dict(trading.CONFIG_POR_DEFECTO),
+    db.execute(
+        insert(TradingBotConfig)
+        .values(
+            bot_name=spec.bot_name,
+            enabled=False,
+            config_json=dict(trading.CONFIG_POR_DEFECTO),
+        )
+        .on_conflict_do_nothing(index_elements=["bot_name"])
     )
-    db.add(fila)
-    db.flush()
+    fila = db.get(TradingBotConfig, spec.bot_name)
+    assert fila is not None
     return fila
 
 
@@ -92,16 +99,10 @@ def _estado(adaptador) -> schemas.EstadoMotorOut:
     """
     try:
         estado = adaptador.estado()
-    except trading.ErrorDeMotor as exc:
+        return schemas.EstadoMotorOut(**asdict(estado))
+    except (trading.ErrorDeMotor, ValueError, TypeError, KeyError) as exc:
         estado = trading.EstadoMotor.caido(str(exc))
-    return schemas.EstadoMotorOut(
-        alcanzable=estado.alcanzable,
-        corriendo=estado.corriendo,
-        detalle=estado.detalle,
-        modo=estado.modo,
-        posiciones_abiertas=estado.posiciones_abiertas,
-        version=estado.version,
-    )
+        return schemas.EstadoMotorOut(**asdict(estado))
 
 
 def _info(spec: trading.MotorSpec) -> schemas.MotorInfoOut:
@@ -117,6 +118,8 @@ def _info(spec: trading.MotorSpec) -> schemas.MotorInfoOut:
         timeframes=list(spec.timeframes),
         max_instrumentos=spec.max_instrumentos,
         simula_contra=spec.simula_contra,
+        permite_encender=spec.permite_encender,
+        motivo_bloqueo=spec.motivo_bloqueo,
         estrategias=[
             schemas.EstrategiaInfoOut(
                 nombre=e.nombre, etiqueta=e.etiqueta, descripcion=e.descripcion
@@ -141,6 +144,12 @@ def _salida(
         enabled=fila.enabled,
         modo=fila.mode,
         config=_config_out(fila),
+        config_aplicada=(
+            spec.bot_name == trading.BOT_LUMIBOT
+            and estado.alcanzable
+            and estado.estado in {"operando", "pausado", "esperando"}
+            and estado.config_version == fila.version
+        ),
         version=fila.version,
         estado=estado,
         updated_by_email=fila.updated_by_email or "",
@@ -158,11 +167,38 @@ def _exigir_version(fila: TradingBotConfig, version: int) -> None:
         )
 
 
-def _marcar(fila: TradingBotConfig, contexto) -> None:
-    fila.version += 1
-    fila.updated_by_user_id = contexto.usuario.id
-    fila.updated_by_email = contexto.usuario.email
-    fila.updated_at = utcnow()
+def _marcar(db, fila: TradingBotConfig, contexto, **cambios) -> None:
+    """Compara y escribe en una sola sentencia; no basta comparar en Python."""
+    resultado = db.execute(
+        update(TradingBotConfig)
+        .where(
+            TradingBotConfig.bot_name == fila.bot_name,
+            TradingBotConfig.version == fila.version,
+        )
+        .values(
+            **cambios,
+            version=fila.version + 1,
+            updated_by_user_id=contexto.usuario.id,
+            updated_by_email=contexto.usuario.email,
+            updated_at=utcnow(),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if resultado.rowcount != 1:
+        raise conflicto(
+            "Otra persona modificó este bot. Recarga antes de volver a guardar.",
+            code="trading_version_desactualizada",
+        )
+    db.refresh(fila)
+
+
+def _exigir_datos_observados(adaptador) -> None:
+    estado = _estado(adaptador)
+    if (
+        not estado.alcanzable or estado.modo != "paper"
+        or estado.estado not in {"operando", "pausado", "esperando"}
+    ):
+        raise trading.ErrorDeMotor("El motor no confirma datos PAPER vigentes.")
 
 
 # ---------------------------------------------------------------------------
@@ -207,8 +243,9 @@ def listar_operaciones(
     fila = _fila(db, spec)
     adaptador = _adaptador(request, spec, settings, habilitado=fila.enabled)
     try:
+        _exigir_datos_observados(adaptador)
         operaciones = adaptador.operaciones(limite=limit)
-    except trading.ErrorDeMotor:
+    except (trading.ErrorDeMotor, ValueError, TypeError, KeyError):
         # `disponible=False` distingue "no pude preguntar" de "no hay ninguna".
         return schemas.OperacionesOut(items=[], disponible=False)
     return schemas.OperacionesOut(
@@ -247,9 +284,10 @@ def rendimiento(
     )
     adaptador = _adaptador(request, spec, settings, habilitado=fila.enabled)
     try:
+        _exigir_datos_observados(adaptador)
         datos = adaptador.rendimiento(capital)
         disponible = True
-    except trading.ErrorDeMotor:
+    except (trading.ErrorDeMotor, ValueError, TypeError, KeyError):
         datos = trading.Rendimiento.vacio(capital)
         disponible = False
     return schemas.RendimientoOut(
@@ -293,8 +331,7 @@ def guardar_config(
         raise error_de_validacion(exc.campos) from exc
 
     anterior = dict(fila.config_json or {})
-    fila.config_json = limpia
-    _marcar(fila, acceso)
+    _marcar(db, fila, acceso, config_json=limpia)
 
     cambios = {
         clave: {"antes": anterior.get(clave), "despues": valor}
@@ -335,15 +372,21 @@ def interruptor(
     _exigir_version(fila, datos.version)
 
     config = fila.config_json or {}
+    if datos.enabled:
+        try:
+            trading.validar_config(spec, config)
+        except trading.ErrorDeConfig as exc:
+            raise error_de_validacion(exc.campos) from exc
     if datos.enabled and not config.get("instrumentos"):
         singular, plural = spec.termino_instrumento
         raise error_de_validacion(
             {"instrumentos": f"Agrega al menos un {singular} antes de encender el bot."},
             mensaje=f"El bot no tiene {plural} configurados.",
         )
+    if datos.enabled and not spec.permite_encender:
+        raise conflicto(spec.motivo_bloqueo, code="trading_activacion_bloqueada")
 
-    fila.enabled = datos.enabled
-    _marcar(fila, acceso)
+    _marcar(db, fila, acceso, enabled=datos.enabled)
 
     adaptador = _adaptador(request, spec, settings, habilitado=fila.enabled)
     fallo: str | None = None
@@ -363,7 +406,7 @@ def interruptor(
         bot_name=spec.bot_name,
         version=fila.version,
         por_admin=acceso.por_admin,
-        motor_respondio=fallo is None,
+        motor_respondio=fallo is None if spec.bot_name == trading.BOT_FREQTRADE else None,
         error=fallo,
     )
 
@@ -373,10 +416,11 @@ def interruptor(
             corriendo=False,
             detalle=(
                 f"Se guardó el cambio, pero el motor no respondió: {fallo}. "
-                "Revisa que el servicio esté arriba en la VM."
+                "El estado de ejecución no está confirmado."
             ),
             modo=fila.mode,
-            posiciones_abiertas=0,
+            posiciones_abiertas=None,
+            estado="desconocido",
         )
         if fallo is not None
         else _estado(adaptador)

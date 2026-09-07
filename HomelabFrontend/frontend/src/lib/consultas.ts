@@ -548,33 +548,37 @@ export function useCancelarComoAdmin() {
  * El bot es compartido: otro operador puede encenderlo mientras miras.
  *
  * Por eso esta consulta se refresca sola cada 10 s cuando hay algún motor
- * encendido, y se queda quieta cuando no hay ninguno. Sondear un panel con
- * todo apagado no aporta nada y cada refresco pregunta a los motores por red.
+ * encendido, y cada 30 s cuando están apagados: otro operador puede cambiarlos.
  */
 export function useBotsTrading(habilitado = true) {
   return useQuery<BotsTrading, ApiError>({
     queryKey: claves.trading,
-    queryFn: () => api.get<BotsTrading>("/trading/bots"),
+    queryFn: ({ signal }) => api.get<BotsTrading>("/trading/bots", { signal }),
     enabled: habilitado,
     refetchInterval: (consulta) =>
-      consulta.state.data?.items.some((bot: BotTrading) => bot.enabled) ? 10_000 : false,
+      consulta.state.data?.items.some((bot: BotTrading) => bot.enabled) ? 10_000 : 30_000,
+    retry: false,
   });
 }
 
 export function useOperacionesTrading(bot: string, habilitado = true) {
   return useQuery<OperacionesTrading, ApiError>({
     queryKey: claves.tradingOperaciones(bot),
-    queryFn: () =>
-      api.get<OperacionesTrading>(`/trading/bots/${bot}/trades`, { query: { limit: 50 } }),
+    queryFn: ({ signal }) =>
+      api.get<OperacionesTrading>(`/trading/bots/${bot}/trades`, { query: { limit: 50 }, signal }),
     enabled: habilitado,
+    refetchInterval: 10_000,
+    retry: false,
   });
 }
 
 export function useRendimientoTrading(bot: string, habilitado = true) {
   return useQuery<RendimientoTrading, ApiError>({
     queryKey: claves.tradingRendimiento(bot),
-    queryFn: () => api.get<RendimientoTrading>(`/trading/bots/${bot}/performance`),
+    queryFn: ({ signal }) => api.get<RendimientoTrading>(`/trading/bots/${bot}/performance`, { signal }),
     enabled: habilitado,
+    refetchInterval: 10_000,
+    retry: false,
   });
 }
 
@@ -605,7 +609,9 @@ export function useGuardarConfigTrading() {
   const cliente = useQueryClient();
   return useMutation<BotTrading, ApiError, { bot: string; datos: ConfigTradingEntrada }>({
     mutationFn: ({ bot, datos }) => api.put<BotTrading>(`/trading/bots/${bot}/config`, datos),
+    onMutate: () => cliente.cancelQueries({ queryKey: claves.trading }),
     onSuccess: (bot) => sembrarBot(cliente, bot),
+    onSettled: () => { void cliente.invalidateQueries({ queryKey: claves.trading }); },
   });
 }
 
@@ -613,7 +619,9 @@ export function useInterruptorTrading() {
   const cliente = useQueryClient();
   return useMutation<BotTrading, ApiError, { bot: string; enabled: boolean; version: number }>({
     mutationFn: ({ bot, ...datos }) => api.post<BotTrading>(`/trading/bots/${bot}/switch`, datos),
+    onMutate: () => cliente.cancelQueries({ queryKey: claves.trading }),
     onSuccess: (bot) => sembrarBot(cliente, bot),
+    onSettled: () => { void cliente.invalidateQueries({ queryKey: claves.trading }); },
   });
 }
 

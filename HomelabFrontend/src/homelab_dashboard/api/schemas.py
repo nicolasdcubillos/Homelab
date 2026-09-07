@@ -812,6 +812,8 @@ class MotorInfoOut(Esquema):
     #: Vacío en los motores cuyas estrategias son archivos en la VM: ahí la UI
     #: pide el nombre a mano porque nadie puede enumerarlas desde aquí.
     estrategias: list[EstrategiaInfoOut] = []
+    permite_encender: bool
+    motivo_bloqueo: str
 
 
 class EstadoMotorOut(Esquema):
@@ -819,8 +821,13 @@ class EstadoMotorOut(Esquema):
     corriendo: bool
     detalle: str
     modo: str
-    posiciones_abiertas: int
+    posiciones_abiertas: int | None
     version: str | None = None
+    estado: Literal[
+        "desconocido", "operando", "pausado", "esperando", "detenido", "error", "bloqueado", "stale"
+    ]
+    config_version: int | None = None
+    latido_en: str | None = None
 
 
 class ConfigTradingOut(Esquema):
@@ -846,14 +853,14 @@ class ConfigTradingIn(Esquema):
     instrumentos: list[str] = Field(default_factory=list, max_length=50)
     estrategia: str = Field(default="", max_length=64)
     timeframe: str = Field(max_length=8)
-    capital_simulado: float
-    max_posiciones_abiertas: int
-    stop_loss_pct: float
-    take_profit_pct: float
-    max_perdida_diaria_pct: float
+    capital_simulado: float = Field(strict=True, allow_inf_nan=False)
+    max_posiciones_abiertas: int = Field(strict=True)
+    stop_loss_pct: float = Field(strict=True, allow_inf_nan=False)
+    take_profit_pct: float = Field(strict=True, allow_inf_nan=False)
+    max_perdida_diaria_pct: float = Field(strict=True, allow_inf_nan=False)
     #: Versión que el cliente leyó. Si no coincide con la almacenada, la API
     #: responde 409 en vez de pisar el cambio de otro usuario.
-    version: int = Field(ge=1)
+    version: int = Field(ge=1, strict=True)
 
 
 class BotTradingOut(Esquema):
@@ -863,6 +870,7 @@ class BotTradingOut(Esquema):
     enabled: bool
     modo: str
     config: ConfigTradingOut
+    config_aplicada: bool
     version: int
     estado: EstadoMotorOut
     updated_by_email: str
@@ -877,8 +885,8 @@ class BotsTradingOut(Esquema):
 
 
 class InterruptorIn(Esquema):
-    enabled: bool
-    version: int = Field(ge=1)
+    enabled: bool = Field(strict=True)
+    version: int = Field(ge=1, strict=True)
 
 
 class OperacionOut(Esquema):
@@ -912,7 +920,7 @@ class RendimientoOut(Esquema):
     win_rate: float | None
     mejor_pct: float | None
     peor_pct: float | None
-    costos_simulados: float
+    costos_simulados: float | None
     disponible: bool = True
 
 
@@ -930,4 +938,3 @@ class AccesosTradingOut(Esquema):
 
 class AccesoTradingIn(Esquema):
     level: Literal["viewer", "operator"]
-

@@ -177,7 +177,7 @@ export function esquemaConfigTrading(limites: {
       .min(1, mensaje)
       .refine((v) => {
         const n = Number(v.replace(",", "."));
-        return !Number.isNaN(n) && n >= min && n <= max;
+        return /^\d+(?:[.,]\d+)?$/.test(v) && Number.isFinite(n) && n >= min && n <= max;
       }, mensaje);
 
   return z
@@ -200,7 +200,7 @@ export function esquemaConfigTrading(limites: {
         .trim()
         .refine((v) => {
           const n = Number(v);
-          return Number.isInteger(n) && n >= 1 && n <= limites.maxInstrumentos;
+          return /^\d+$/.test(v) && Number.isInteger(n) && n >= 1 && n <= limites.maxInstrumentos;
         }, `Debe estar entre 1 y ${limites.maxInstrumentos}.`),
       stop_loss_pct: rango(0.1, 90, "El stop loss debe estar entre 0,1 y 90."),
       take_profit_pct: rango(0.1, 500, "El take profit debe estar entre 0,1 y 500."),

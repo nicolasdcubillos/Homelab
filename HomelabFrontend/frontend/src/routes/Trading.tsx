@@ -82,7 +82,21 @@ function aNumero(texto: string): number {
  * explícito para «lo pedimos, pero el motor no lo confirma».
  */
 function estadoDeBot(bot: BotTrading): { tono: Tono; texto: string; latiendo: boolean } {
+  if (bot.estado.estado === "detenido") return { tono: "aviso", texto: "Supervisor detenido", latiendo: false };
   if (!bot.estado.alcanzable) return { tono: "alerta", texto: "Sin respuesta", latiendo: false };
+  if (bot.estado.estado === "bloqueado" || bot.estado.modo !== "paper") {
+    return { tono: "alerta", texto: "Control bloqueado", latiendo: false };
+  }
+  if (bot.estado.estado === "error") return { tono: "alerta", texto: "Error del motor", latiendo: false };
+  if (bot.estado.estado === "desconocido") {
+    return { tono: "aviso", texto: "Estado sin confirmar", latiendo: false };
+  }
+  if (bot.estado.corriendo && !bot.enabled) {
+    return { tono: "aviso", texto: "Parada sin confirmar", latiendo: false };
+  }
+  if (bot.estado.estado === "esperando") {
+    return { tono: "aviso", texto: "Esperando revisión", latiendo: false };
+  }
   if (bot.estado.corriendo) return { tono: "activo", texto: "Operando", latiendo: true };
   if (bot.enabled) return { tono: "aviso", texto: "Encendido, sin confirmar", latiendo: false };
   return { tono: "neutro", texto: "Apagado", latiendo: false };
@@ -104,6 +118,7 @@ function EditorConfig({
   const guardar = useGuardarConfigTrading();
   const avisos = useAvisos();
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
+  const [versionBase, setVersionBase] = useState(bot.version);
 
   const { motor, config } = bot;
 
@@ -142,9 +157,10 @@ function EditorConfig({
     // esta pestaña estaba en otra sección.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setErrorGeneral(null);
+    setVersionBase(bot.version);
     reset(valores());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [abierta, bot.version, reset]);
+  }, [abierta, reset]);
 
   const enviar = handleSubmit(async (datos) => {
     setErrorGeneral(null);
@@ -157,12 +173,12 @@ function EditorConfig({
       stop_loss_pct: aNumero(datos.stop_loss_pct),
       take_profit_pct: aNumero(datos.take_profit_pct),
       max_perdida_diaria_pct: aNumero(datos.max_perdida_diaria_pct),
-      version: bot.version,
+      version: versionBase,
     };
 
     try {
       await guardar.mutateAsync({ bot: motor.bot_name, datos: cuerpo });
-      avisos.exito(`Guardamos la configuración de ${motor.display_name}.`);
+      avisos.info(`Guardamos la configuración solicitada de ${motor.display_name}; aplicación sin confirmar.`);
       onCerrar();
     } catch (error) {
       setErrorGeneral(aplicarErroresDeApi(error, setError, [...CAMPOS_CONFIG]));
@@ -218,6 +234,31 @@ function EditorConfig({
     >
       <div className="space-y-4">
         {errorGeneral && <Aviso tono="alerta">{errorGeneral}</Aviso>}
+        {!bot.config_aplicada && (
+          <Aviso tono="aviso">
+            La configuración guardada no está confirmada como aplicada.
+            {!motor.permite_encender && ` ${motor.motivo_bloqueo}`}
+          </Aviso>
+        )}
+        {versionBase !== bot.version && (
+          <Aviso tono="aviso" titulo="La configuración compartida cambió">
+            Conservamos tu borrador. Recarga para revisar los cambios antes de guardar.
+            <Boton tono="sutil" onClick={() => {
+              reset(valores());
+              setVersionBase(bot.version);
+              setErrorGeneral(null);
+            }}>
+              Descartar borrador y recargar
+            </Boton>
+          </Aviso>
+        )}
+        {motor.clase_activo === "acciones" && (
+          <Aviso tono="aviso" titulo="Retirar tickers no requiere pausar">
+            En el simulador, retirar tickers (incluso todos) solicita cerrar sus posiciones
+            en el siguiente ciclo con el bot habilitado. La pausa no liquida posiciones
+            ni supervisa sus stops.
+          </Aviso>
+        )}
 
         <Campo
           {...register("instrumentos")}
@@ -260,7 +301,7 @@ function EditorConfig({
         <Campo
           {...register("capital_simulado")}
           etiqueta="Capital simulado"
-          descripcion="Dinero ficticio con el que arranca la simulación."
+          descripcion="Presupuesto para cálculos y límites. Cambiarlo no recarga el saldo ni reinicia el capital inicial de una simulación existente."
           error={errors.capital_simulado?.message}
           disabled={soloLectura}
           inputMode="decimal"
@@ -327,10 +368,14 @@ function ResumenRendimiento({ datos }: { datos: RendimientoTrading }) {
         valor={`${datos.pnl_absoluto >= 0 ? "+" : ""}${dinero(datos.pnl_absoluto)}`}
         descripcion={`${porcentaje(datos.pnl_pct, true)} sobre ${dinero(datos.capital_inicial)}`}
       />
-      <FilaValor etiqueta="Capital actual" valor={dinero(datos.capital_actual)} />
+      <FilaValor
+        etiqueta="Capital más resultado realizado"
+        valor={dinero(datos.capital_actual)}
+        descripcion="No incluye ganancias ni pérdidas de posiciones abiertas."
+      />
       <FilaValor
         etiqueta="Aciertos"
-        valor={porcentaje(datos.win_rate)}
+        valor={porcentaje(datos.win_rate == null ? null : datos.win_rate * 100)}
         descripcion={`${datos.ganadoras} ganadoras y ${datos.perdedoras} perdedoras de ${plural(
           datos.operaciones_cerradas,
           "operación cerrada",
@@ -343,8 +388,8 @@ function ResumenRendimiento({ datos }: { datos: RendimientoTrading }) {
       />
       <FilaValor
         etiqueta="Costos simulados"
-        valor={dinero(datos.costos_simulados)}
-        descripcion="Comisiones y deslizamiento estimados. Ya están descontados del resultado."
+        valor={datos.costos_simulados == null ? "Sin información" : dinero(datos.costos_simulados)}
+        descripcion="Costos informados por el motor, ya descontados del resultado realizado."
       />
     </Lista>
   );
@@ -352,7 +397,7 @@ function ResumenRendimiento({ datos }: { datos: RendimientoTrading }) {
 
 function FilaOperacion({ operacion }: { operacion: OperacionTrading }) {
   const cerrada = !operacion.abierta;
-  const ganancia = (operacion.pnl_absoluto ?? 0) >= 0;
+  const ganancia = operacion.pnl_absoluto !== null && operacion.pnl_absoluto >= 0;
 
   return (
     <Fila>
@@ -381,7 +426,7 @@ function FilaOperacion({ operacion }: { operacion: OperacionTrading }) {
                 }`}
               >
                 {ganancia ? "+" : ""}
-                {dinero(operacion.pnl_absoluto ?? 0)}
+                {operacion.pnl_absoluto === null ? "Sin resultado" : dinero(operacion.pnl_absoluto)}
               </p>
               <p className="text-footnote text-muted tabular-nums">
                 {porcentaje(operacion.pnl_pct, true)}
@@ -416,7 +461,7 @@ function DetalleBot({
       abierta={abierta}
       onCerrar={onCerrar}
       titulo={bot.motor.display_name}
-      descripcion={`Simulación contra ${bot.motor.simula_contra}. Ninguna de estas operaciones existe fuera del panel.`}
+      descripcion="Solo PAPER. Resultados observados del motor; no equivalen a rentabilidad real."
       tamano="lg"
       pie={
         <PieDeHoja>
@@ -435,16 +480,23 @@ function DetalleBot({
             onReintentar={() => void rendimiento.refetch()}
           />
         )}
-        {rendimiento.data && <ResumenRendimiento datos={rendimiento.data} />}
+        {!rendimiento.isError && rendimiento.data && <ResumenRendimiento datos={rendimiento.data} />}
 
         {operaciones.isPending && <EsqueletoLista filas={3} />}
-        {operaciones.data && !operaciones.data.disponible && (
+        {operaciones.isError && (
+          <EstadoError
+            titulo="No pudimos cargar las operaciones"
+            mensaje={mensajeDeError(operaciones.error, "No mostramos datos anteriores como vigentes.")}
+            onReintentar={() => void operaciones.refetch()}
+          />
+        )}
+        {!operaciones.isError && operaciones.data && !operaciones.data.disponible && (
           <Aviso tono="aviso">
             El motor no respondió a la consulta de operaciones. Vuelve a intentarlo cuando esté en
             marcha.
           </Aviso>
         )}
-        {operaciones.data?.disponible && (
+        {!operaciones.isError && operaciones.data?.disponible && (
           <Lista
             titulo="Operaciones"
             nota={
@@ -476,7 +528,9 @@ function DetalleBot({
 
 /* --------------------------------------------------------------- un motor -- */
 
-function TarjetaBot({ bot, nivel }: { bot: BotTrading; nivel: NivelTrading }) {
+function TarjetaBot({ bot, nivel, desactualizado }: {
+  bot: BotTrading; nivel: NivelTrading; desactualizado: boolean;
+}) {
   const interruptor = useInterruptorTrading();
   const avisos = useAvisos();
   const [config, setConfig] = useState(false);
@@ -484,27 +538,24 @@ function TarjetaBot({ bot, nivel }: { bot: BotTrading; nivel: NivelTrading }) {
   const [error, setError] = useState<string | null>(null);
 
   const { motor } = bot;
-  const puedeOperar = nivel === "operator";
-  const estado = estadoDeBot(bot);
+  const puedeOperar = nivel === "operator" && !desactualizado;
+  const estado = desactualizado
+    ? { tono: "alerta" as const, texto: "Datos desactualizados", latiendo: false }
+    : estadoDeBot(bot);
   const sinInstrumentos = bot.config.instrumentos.length === 0;
 
   const cambiar = async (encendido: boolean) => {
     setError(null);
     try {
-      const actualizado = await interruptor.mutateAsync({
+      await interruptor.mutateAsync({
         bot: motor.bot_name,
         enabled: encendido,
         version: bot.version,
       });
-      if (encendido && !actualizado.estado.alcanzable) {
-        // La intención quedó guardada aunque el motor no respondiera: decirlo
-        // es más útil que fingir que todo salió bien.
-        avisos.exito(`Encendimos ${motor.display_name}, pero aún no responde.`);
-      } else {
-        avisos.exito(
-          encendido ? `${motor.display_name} está encendido.` : `${motor.display_name} está apagado.`,
-        );
-      }
+      avisos.info(
+        `Guardamos la solicitud de ${encendido ? "encendido" : "apagado"} de ${motor.display_name}. `
+        + "Consulta el estado observado para confirmar su ejecución.",
+      );
     } catch (excepcion) {
       setError(mensajeDeError(excepcion, "No pudimos cambiar el estado del bot."));
     }
@@ -530,22 +581,36 @@ function TarjetaBot({ bot, nivel }: { bot: BotTrading; nivel: NivelTrading }) {
             <Interruptor
               checked={bot.enabled}
               onChange={(valor) => void cambiar(valor)}
-              etiqueta="Bot encendido"
+              etiqueta="Encendido solicitado"
               descripcion={
-                sinInstrumentos && !bot.enabled
+                !motor.permite_encender
+                  ? motor.motivo_bloqueo
+                  : sinInstrumentos && !bot.enabled
                   ? `Añade al menos un ${motor.termino_singular} antes de encenderlo.`
                   : bot.estado.detalle
               }
-              disabled={interruptor.isPending || (sinInstrumentos && !bot.enabled)}
+              disabled={
+                interruptor.isPending || (!bot.enabled && (
+                  sinInstrumentos || !motor.permite_encender || bot.estado.estado === "bloqueado"
+                ))
+              }
             />
           </Fila>
         ) : (
           <FilaValor
-            etiqueta="Bot encendido"
+            etiqueta="Encendido solicitado"
             valor={bot.enabled ? "Sí" : "No"}
-            descripcion={bot.estado.detalle}
+            descripcion={desactualizado ? "No pudimos actualizar el estado." : bot.estado.detalle}
           />
         )}
+        <FilaValor etiqueta="Estado observado" valor={estado.texto} descripcion={
+          desactualizado ? "Reintenta la consulta antes de operar." : bot.estado.detalle
+        } />
+        <FilaValor
+          etiqueta="Aplicación de configuración"
+          valor={bot.config_aplicada && !desactualizado ? "Confirmada" : "Sin confirmar"}
+          descripcion={`Versión solicitada: ${bot.version}; observada: ${bot.estado.config_version ?? "desconocida"}.`}
+        />
 
         <FilaValor
           etiqueta="Configuración"
@@ -561,7 +626,7 @@ function TarjetaBot({ bot, nivel }: { bot: BotTrading; nivel: NivelTrading }) {
         <FilaValor
           etiqueta="Resultados y operaciones"
           valor={
-            bot.estado.posiciones_abiertas > 0
+            !desactualizado && bot.estado.alcanzable && bot.estado.posiciones_abiertas != null && bot.estado.posiciones_abiertas > 0
               ? plural(bot.estado.posiciones_abiertas, "posición abierta", "posiciones abiertas")
               : "Ver"
           }
@@ -603,8 +668,8 @@ export function Trading() {
     >
       <div className="space-y-6">
         <Aviso tono="info" titulo="Todo esto es simulado">
-          Los bots operan con dinero ficticio contra precios reales. No hay ninguna cuenta con
-          fondos conectada y el sistema no puede ejecutar órdenes reales.
+          Este panel solo admite PAPER, nunca dinero real. El simulador local usa datos ficticios.
+          Alpaca Paper y la activación de Freqtrade están bloqueados preventivamente.
         </Aviso>
 
         {data?.nivel === "viewer" && (
@@ -633,7 +698,7 @@ export function Trading() {
         )}
 
         {data?.items.map((bot) => (
-          <TarjetaBot key={bot.motor.bot_name} bot={bot} nivel={data.nivel} />
+          <TarjetaBot key={bot.motor.bot_name} bot={bot} nivel={data.nivel} desactualizado={isError} />
         ))}
       </div>
     </Pantalla>

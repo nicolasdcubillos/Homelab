@@ -8,9 +8,18 @@ quede en la bitácora.
 
 from __future__ import annotations
 
+import importlib
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
+from sqlalchemy.orm import Session
 
 from homelab_dashboard import trading
+from homelab_dashboard.api import routes_trading
+from homelab_dashboard.api.errors import ApiError
+from homelab_dashboard.models import TradingBotConfig, User
 
 CONFIG = {
     "instrumentos": ["BTC/USDT", "ETH/USDT"],
@@ -31,6 +40,7 @@ class MotorFalso:
         self.ordenes: list[str] = []
         self.caido = False
         self.corriendo = False
+        self.config_version = None
 
     def estado(self):
         if self.caido:
@@ -39,6 +49,8 @@ class MotorFalso:
             alcanzable=True,
             corriendo=self.corriendo,
             detalle="Operando" if self.corriendo else "En pausa",
+            estado="operando" if self.corriendo else "pausado",
+            config_version=self.config_version,
         )
 
     def encender(self):
@@ -250,17 +262,19 @@ def test_bloqueo_optimista(admin, operador, motores):
 
 def test_encender_tambien_sube_la_version(operador, motores):
     """El interruptor cambia la fila, así que invalida las versiones en vuelo."""
-    bot = _bot(operador)
-    assert _guardar(operador, bot["version"]).status_code == 200
-    version = _bot(operador)["version"]
+    bot = _bot(operador, "lumibot")
+    assert _guardar(
+        operador, bot["version"], "lumibot", instrumentos=["AAPL"], estrategia="cruce_medias"
+    ).status_code == 200
+    version = _bot(operador, "lumibot")["version"]
 
     encendido = operador.post(
-        "/api/v1/trading/bots/freqtrade/switch", json={"enabled": True, "version": version}
+        "/api/v1/trading/bots/lumibot/switch", json={"enabled": True, "version": version}
     )
     assert encendido.status_code == 200
     assert encendido.json()["version"] == version + 1
     # Quien tuviera la versión anterior en pantalla ya no puede guardar a ciegas.
-    assert _guardar(operador, version).status_code == 409
+    assert _guardar(operador, version, "lumibot").status_code == 409
 
 
 # ---------------------------------------------------------------------------
@@ -282,9 +296,12 @@ def test_no_se_enciende_sin_instrumentos(operador, motores):
 
 
 def test_encender_y_apagar_llegan_al_motor(operador, motores):
-    version = _guardar(operador, _bot(operador)["version"]).json()["version"]
+    version = _guardar(
+        operador, _bot(operador, "lumibot")["version"], "lumibot",
+        instrumentos=["AAPL"], estrategia="cruce_medias",
+    ).json()["version"]
     encendido = operador.post(
-        "/api/v1/trading/bots/freqtrade/switch", json={"enabled": True, "version": version}
+        "/api/v1/trading/bots/lumibot/switch", json={"enabled": True, "version": version}
     )
     assert encendido.status_code == 200
     assert encendido.json()["enabled"] is True
@@ -292,20 +309,23 @@ def test_encender_y_apagar_llegan_al_motor(operador, motores):
 
     version = encendido.json()["version"]
     apagado = operador.post(
-        "/api/v1/trading/bots/freqtrade/switch", json={"enabled": False, "version": version}
+        "/api/v1/trading/bots/lumibot/switch", json={"enabled": False, "version": version}
     )
     assert apagado.status_code == 200
     assert apagado.json()["enabled"] is False
-    assert motores["freqtrade"].ordenes == ["encender", "apagar"]
+    assert motores["lumibot"].ordenes == ["encender", "apagar"]
 
 
 def test_motor_caido_conserva_la_intencion(operador, motores):
     """Se guarda lo que se pidió y se dice que el motor no respondió."""
-    version = _guardar(operador, _bot(operador)["version"]).json()["version"]
-    motores["freqtrade"].caido = True
+    version = _guardar(
+        operador, _bot(operador, "lumibot")["version"], "lumibot",
+        instrumentos=["AAPL"], estrategia="cruce_medias",
+    ).json()["version"]
+    motores["lumibot"].caido = True
 
     respuesta = operador.post(
-        "/api/v1/trading/bots/freqtrade/switch", json={"enabled": True, "version": version}
+        "/api/v1/trading/bots/lumibot/switch", json={"enabled": True, "version": version}
     )
     assert respuesta.status_code == 200
     cuerpo = respuesta.json()
@@ -314,7 +334,7 @@ def test_motor_caido_conserva_la_intencion(operador, motores):
     assert "no respondió" in cuerpo["estado"]["detalle"]
 
     # Y la intención quedó persistida, no se perdió con el fallo.
-    assert _bot(operador)["enabled"] is True
+    assert _bot(operador, "lumibot")["enabled"] is True
 
 
 def test_lecturas_sobreviven_a_un_motor_caido(operador, motores):
@@ -365,13 +385,13 @@ def test_todo_lo_que_muta_queda_en_la_bitacora(admin, operador, motores):
     """Sin dueño por fila, la bitácora es la única forma de saber quién fue."""
     version = _guardar(operador, _bot(operador)["version"], estrategia="Auditada").json()["version"]
     operador.post(
-        "/api/v1/trading/bots/freqtrade/switch", json={"enabled": True, "version": version}
+        "/api/v1/trading/bots/freqtrade/switch", json={"enabled": False, "version": version}
     )
 
     entradas = admin.get("/api/v1/admin/audit?limit=50").json()["items"]
     acciones = {e["action"] for e in entradas}
     assert "trading.config_actualizada" in acciones
-    assert "trading.encendido" in acciones
+    assert "trading.apagado" in acciones
     assert "trading.acceso_concedido" in acciones
 
     config = next(e for e in entradas if e["action"] == "trading.config_actualizada")
@@ -445,3 +465,236 @@ def test_mutar_sin_csrf(operador, motores):
     )
     assert respuesta.status_code == 403
     assert respuesta.json()["error"]["code"] == "csrf_invalido"
+
+
+def test_freqtrade_activacion_bloqueada_no_guarda_intencion(operador, motores):
+    guardado = _guardar(operador, _bot(operador)["version"]).json()
+    assert guardado["config_aplicada"] is False
+    assert not guardado["motor"]["permite_encender"]
+    respuesta = operador.post(
+        "/api/v1/trading/bots/freqtrade/switch",
+        json={"enabled": True, "version": guardado["version"]},
+    )
+    assert respuesta.status_code == 409
+    assert respuesta.json()["error"]["code"] == "trading_activacion_bloqueada"
+    posterior = _bot(operador)
+    assert posterior["version"] == guardado["version"]
+    assert not posterior["enabled"]
+    assert motores["freqtrade"].ordenes == []
+
+
+def test_confirmacion_de_config_exige_version_observada(operador, motores):
+    bot = _bot(operador, "lumibot")
+    assert not bot["config_aplicada"]
+    motores["lumibot"].config_version = bot["version"]
+    assert _bot(operador, "lumibot")["config_aplicada"]
+    nuevo = _guardar(
+        operador, bot["version"], "lumibot", instrumentos=["AAPL"], estrategia="cruce_medias",
+    ).json()
+    assert not nuevo["config_aplicada"]
+    motores["lumibot"].caido = True
+    motores["lumibot"].config_version = nuevo["version"]
+    assert not _bot(operador, "lumibot")["config_aplicada"]
+
+
+@pytest.mark.parametrize("campo,valor", [
+    ("capital_simulado", True), ("capital_simulado", "10000"),
+    ("capital_simulado", "NaN"), ("max_posiciones_abiertas", True),
+    ("max_posiciones_abiertas", 2.5), ("max_posiciones_abiertas", 2.0),
+    ("stop_loss_pct", True), ("version", True),
+])
+def test_api_rechaza_coerciones_de_config(operador, motores, campo, valor):
+    version = _bot(operador)["version"]
+    respuesta = operador.put(
+        "/api/v1/trading/bots/freqtrade/config",
+        json={**CONFIG, "version": version, campo: valor},
+    )
+    assert respuesta.status_code == 422
+    assert _bot(operador)["version"] == version
+
+
+@pytest.mark.parametrize("valor", ["false", "true", 0, 1, None])
+def test_interruptor_exige_booleano_real(operador, motores, valor):
+    respuesta = operador.post(
+        "/api/v1/trading/bots/lumibot/switch", json={"enabled": valor, "version": 1},
+    )
+    assert respuesta.status_code == 422
+
+
+def test_retirar_todos_instrumentos_conserva_habilitado_y_bloqueo_optimista(operador, motores):
+    bot = _guardar(
+        operador, _bot(operador, "lumibot")["version"], "lumibot",
+        instrumentos=["AAPL"], estrategia="cruce_medias",
+    ).json()
+    encendido = operador.post(
+        "/api/v1/trading/bots/lumibot/switch",
+        json={"enabled": True, "version": bot["version"]},
+    ).json()
+    respuesta = _guardar(
+        operador, encendido["version"], "lumibot", instrumentos=[], estrategia="cruce_medias",
+    )
+    assert respuesta.status_code == 200
+    guardado = respuesta.json()
+    assert guardado["enabled"]
+    assert guardado["config"]["instrumentos"] == []
+    assert guardado["version"] == encendido["version"] + 1
+    assert guardado["estado"]["config_version"] == encendido["estado"]["config_version"]
+    assert not guardado["config_aplicada"]
+    assert motores["lumibot"].ordenes == ["encender"]
+    assert _guardar(
+        operador, encendido["version"], "lumibot",
+        instrumentos=["SPY"], estrategia="cruce_medias",
+    ).status_code == 409
+    persistido = _bot(operador, "lumibot")
+    assert persistido["enabled"] and persistido["config"]["instrumentos"] == []
+
+
+def test_encendido_revalida_config_almacenada_y_apagado_no_se_impide(
+    operador, motores, db
+):
+    bot = _bot(operador, "lumibot")
+    fila = db.get(TradingBotConfig, "lumibot")
+    fila.config_json = {**CONFIG, "instrumentos": ["AAPL"], "estrategia": "no_existe"}
+    db.commit()
+    respuesta = operador.post(
+        "/api/v1/trading/bots/lumibot/switch",
+        json={"enabled": True, "version": bot["version"]},
+    )
+    assert respuesta.status_code == 422
+    assert motores["lumibot"].ordenes == []
+    assert operador.post(
+        "/api/v1/trading/bots/lumibot/switch",
+        json={"enabled": False, "version": bot["version"]},
+    ).status_code == 200
+
+
+@pytest.mark.parametrize("estado", ["error", "bloqueado", "stale", "desconocido"])
+def test_datos_no_vigentes_no_se_presentan_como_resultados(operador, motores, estado):
+    motores["lumibot"].estado = lambda: trading.EstadoMotor(
+        alcanzable=estado != "stale", corriendo=False,
+        detalle="Motor no operativo", estado=estado,
+    )
+    for recurso in ("performance", "trades"):
+        respuesta = operador.get(f"/api/v1/trading/bots/lumibot/{recurso}")
+        assert respuesta.status_code == 200
+        assert not respuesta.json()["disponible"]
+
+
+def test_comparacion_atomica_rechaza_fila_ya_leida(admin, motores, db):
+    _bot(admin, "lumibot")
+    usuario = db.get(User, _id_de(admin, "admin@ejemplo.com"))
+    contexto = SimpleNamespace(usuario=usuario)
+    fila_vieja = db.get(TradingBotConfig, "lumibot")
+    with Session(db.get_bind()) as concurrente:
+        otra_fila = concurrente.get(TradingBotConfig, "lumibot")
+        routes_trading._marcar(concurrente, otra_fila, contexto, enabled=True)
+        concurrente.commit()
+    with pytest.raises(ApiError) as exc:
+        routes_trading._marcar(db, fila_vieja, contexto, enabled=False)
+    assert exc.value.code == "trading_version_desactualizada"
+    db.rollback()
+    assert db.get(TradingBotConfig, "lumibot").enabled
+
+
+def test_la_api_respeta_capacidad_de_activacion(operador, motores, monkeypatch):
+    version = _guardar(
+        operador, _bot(operador, "lumibot")["version"], "lumibot",
+        instrumentos=["AAPL"], estrategia="cruce_medias",
+    ).json()["version"]
+    monkeypatch.setitem(trading.MOTORES, "lumibot", replace(
+        trading.LUMIBOT, permite_encender=False, motivo_bloqueo="Control no implementado",
+    ))
+    respuesta = operador.post(
+        "/api/v1/trading/bots/lumibot/switch", json={"enabled": True, "version": version},
+    )
+    assert respuesta.status_code == 409
+    assert motores["lumibot"].ordenes == []
+    assert not _bot(operador, "lumibot")["enabled"]
+
+
+def test_motor_no_registrado_no_se_puede_activar(operador, motores):
+    respuesta = operador.post(
+        "/api/v1/trading/bots/no_implementado/switch", json={"enabled": True, "version": 1},
+    )
+    assert respuesta.status_code == 404
+
+
+@pytest.fixture()
+def estado_real_tradinglab(app, tmp_path, monkeypatch):
+    raiz = Path(__file__).resolve().parents[2] / "TradingLab" / "src"
+    monkeypatch.syspath_prepend(str(raiz))
+    fuente = importlib.import_module("tradinglab.estado")
+    assert Path(fuente.__file__).is_relative_to(raiz)
+    ruta = tmp_path / "tradinglab-real.sqlite"
+    monkeypatch.setattr(app.state, "settings", replace(app.state.settings, tradinglab_db=ruta))
+    with fuente.AlmacenEstado(ruta) as almacen:
+        yield almacen, fuente
+
+
+def test_config_compartida_se_guarda_y_habilita_con_alpaca_pausado(
+    operador, estado_real_tradinglab
+):
+    almacen, _ = estado_real_tradinglab
+    almacen.vincular("alpaca_paper")
+    almacen.latir(
+        estado="pausado", modo="alpaca_paper", config_version=1,
+        version="tradinglab prueba", posiciones_abiertas=2, detalle="En pausa",
+    )
+    antes = almacen.db_path.read_bytes()
+    version = _bot(operador, "lumibot")["version"]
+    respuesta = _guardar(
+        operador, version, "lumibot", instrumentos=["AAPL"],
+        estrategia="cruce_medias", capital_simulado=20000,
+    )
+    assert respuesta.status_code == 200, respuesta.text
+    guardado = respuesta.json()
+    assert guardado["config"]["capital_simulado"] == 20000
+    assert guardado["version"] == version + 1
+    assert guardado["estado"]["estado"] == "pausado"
+    assert guardado["estado"]["alcanzable"]
+    assert guardado["estado"]["config_version"] == 1
+    assert guardado["estado"]["version"] == "tradinglab prueba"
+    assert guardado["estado"]["posiciones_abiertas"] == 2
+    assert "Alpaca Paper está bloqueado preventivamente" in guardado["estado"]["detalle"]
+    habilitar = operador.post(
+        "/api/v1/trading/bots/lumibot/switch",
+        json={"enabled": True, "version": guardado["version"]},
+    )
+    assert habilitar.status_code == 200, habilitar.text
+    assert habilitar.json()["enabled"]
+    assert not habilitar.json()["estado"]["corriendo"]
+    assert habilitar.json()["estado"]["estado"] == "pausado"
+    assert almacen.db_path.read_bytes() == antes
+
+
+def test_cambiar_presupuesto_demo_no_muta_identidad_ni_base_de_rendimiento(
+    operador, estado_real_tradinglab
+):
+    almacen, fuente = estado_real_tradinglab
+    almacen.vincular("simulado")
+    almacen.restaurar_simulacion(10000)
+    operacion = almacen.registrar_apertura(fuente.Apertura(
+        instrumento="AAPL", lado="compra", cantidad=2, precio_entrada=100, costos=1,
+    ))
+    almacen.registrar_cierre(operacion, precio_salida=110, costos_salida=1)
+    almacen.latir(
+        estado="operando", modo="simulado", config_version=1, detalle="Simulación local",
+    )
+    antes = almacen.db_path.read_bytes()
+    respuesta = _guardar(
+        operador, _bot(operador, "lumibot")["version"], "lumibot",
+        instrumentos=["AAPL"], estrategia="cruce_medias", capital_simulado=20000,
+    )
+    assert respuesta.status_code == 200, respuesta.text
+    assert respuesta.json()["config"]["capital_simulado"] == 20000
+    assert almacen.conexion.execute(
+        "SELECT capital_inicial FROM identidad_motor WHERE id = 1"
+    ).fetchone()["capital_inicial"] == 10000
+    rendimiento = operador.get("/api/v1/trading/bots/lumibot/performance")
+    assert rendimiento.status_code == 200, rendimiento.text
+    datos = rendimiento.json()
+    assert datos["disponible"]
+    assert datos["capital_inicial"] == 10000
+    assert datos["capital_actual"] == 10018
+    assert datos["pnl_pct"] == pytest.approx(0.18)
+    assert almacen.db_path.read_bytes() == antes
