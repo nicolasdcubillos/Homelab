@@ -40,6 +40,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base, UtcDateTime, utcnow
+from .market_regime.models import RegimeAccess
 
 # --------------------------------------------------------------------- enums
 
@@ -166,6 +167,21 @@ class User(Base):
         uselist=False,
         foreign_keys="TradingAccess.user_id",
     )
+    regime_access: Mapped[RegimeAccess | None] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+        foreign_keys="RegimeAccess.user_id",
+    )
+
+    @property
+    def regime_level(self) -> str | None:
+        if self.status != USER_ACTIVE or self.must_change_password:
+            return None
+        if self.role == ROLE_ADMIN:
+            return "operator"
+        return self.regime_access.level if self.regime_access is not None else None
 
     @property
     def is_admin(self) -> bool:
