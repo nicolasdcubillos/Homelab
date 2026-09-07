@@ -6,7 +6,12 @@ on:
     paths:
       - "HomelabFrontend/**"
       - ".github/workflows/deploy-homelabfrontend.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      recover:
+        description: Recuperar un despliegue fallido con el servicio detenido
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,4 +32,9 @@ jobs:
           persist-credentials: false
 
       - name: Deploy isolated dashboard with database backup
-        run: sudo bash HomelabFrontend/scripts/deploy-market-regime.sh "$GITHUB_SHA"
+        env:
+          RECOVER_DEPLOYMENT: ${{ inputs.recover && 'true' || 'false' }}
+        run: |
+          args=("$GITHUB_SHA")
+          if [ "$RECOVER_DEPLOYMENT" = true ]; then args+=(--recover); fi
+          sudo bash HomelabFrontend/scripts/deploy-market-regime.sh "${args[@]}"

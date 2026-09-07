@@ -48,6 +48,10 @@ if [ -L "$current" ]; then test -d "$current"; fi
   environment /etc/homelab/market-regime.env
 was_active=0
 if systemctl is-active --quiet "$service"; then
+  if [ "$recover" = 1 ]; then
+    echo "--recover solo se admite con el servicio detenido." >&2
+    exit 1
+  fi
   was_active=1
   pid="$(systemctl show "$service" -p MainPID --value)"
   "$python" "$source_dir/scripts/comprobar_despliegue.py" runtime --pid "$pid" --db "$db"

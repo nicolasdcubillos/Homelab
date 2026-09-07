@@ -179,7 +179,8 @@ def test_preflight_migra_copia_y_prueba_api_sin_red(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(os.name != "posix", reason="Contrato Bash/Linux del instalador")
 @pytest.mark.parametrize("record_matches", [True, False])
-def test_recovery_exige_configuracion_registrada(tmp_path, record_matches):
+@pytest.mark.parametrize("active", [True, False])
+def test_recovery_exige_configuracion_registrada(tmp_path, record_matches, active):
     import hashlib
 
     release = tmp_path / "release"
@@ -194,17 +195,17 @@ def test_recovery_exige_configuracion_registrada(tmp_path, record_matches):
     source = DEPLOY.read_text()
     guard = "was_active=0\n" + source.split("was_active=0\n", 1)[1].split('work="$(mktemp', 1)[0]
     shell = textwrap.dedent(
-        """
+        f"""
         set -eu
         base="$1"; db="$base/dashboard.db"; current="$base/current"
         recovery_marker="$base/recovery-required"; service=dashboard; recover=1
-        systemctl() {
+        systemctl() {{
           case "$1" in
-            is-active) return 1 ;;
+            is-active) return {0 if active else 1} ;;
             show) echo inactive ;;
             cat) echo '[Service]' ;;
           esac
-        }
+        }}
         """
     )
     result = subprocess.run(
@@ -212,7 +213,7 @@ def test_recovery_exige_configuracion_registrada(tmp_path, record_matches):
         capture_output=True,
         text=True,
     )
-    assert (result.returncode == 0) is record_matches, result.stderr
+    assert (result.returncode == 0) is (record_matches and not active), result.stderr
 
 
 @pytest.mark.skipif(os.name != "posix", reason="Contrato Bash/Linux del instalador")

@@ -153,6 +153,9 @@ Diagnosticar con `journalctl -u homelab-dashboard.service`, corregir el candidat
 y ejecutar el instalador con `--recover` (también admite `--prepare-only`).
 Este modo exige un fallo registrado y que la DB, el enlace y la configuración
 systemd sigan siendo los registrados; no adopta cualquier servicio detenido.
+Rechaza un servicio todavía activo. También puede seleccionarse `recover` al
+ejecutar manualmente el workflow desde Actions, o con
+`gh workflow run deploy-homelabfrontend.yml --ref main -f recover=true`.
 Repite preflight y backup, sin restaurar el paquete que ya falló. Restaurar una
 base requiere una decisión operativa
 separada y conservar antes el estado fallido para no perder datos.
