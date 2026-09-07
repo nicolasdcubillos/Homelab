@@ -146,6 +146,7 @@ def _to_hit(watch: Watch, product: Product, store: Store, match: VariantMatch) -
         colorway=product.colorway,
         color_matched=match.color_matched,
         country=store.country,
+        image_url=product.image_url,
     )
 
 

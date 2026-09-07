@@ -1103,6 +1103,7 @@ export interface components {
             finished_at: string | null;
             /** Id */
             id: number;
+            result?: components["schemas"]["ResultadoOut"] | null;
             /** Return Code */
             return_code: number | null;
             /** Skip Reason */
@@ -1142,6 +1143,7 @@ export interface components {
             finished_at: string | null;
             /** Id */
             id: number;
+            result?: components["schemas"]["ResultadoOut"] | null;
             /** Return Code */
             return_code: number | null;
             /** Skip Reason */
@@ -1199,6 +1201,36 @@ export interface components {
             etiqueta: string;
             /** Nombre */
             nombre: string;
+        };
+        /**
+         * HitDetalleOut
+         * @description Un hallazgo nuevo de StockWatcher, tal como lo publica ``hit_detail``.
+         *
+         *     Espejo deliberado de lo que ya recibe el correo (mismo shape que
+         *     ``notifiers.base.summarize`` + la imagen): la tarjeta que pinta la SPA y
+         *     la del email deben mostrar lo mismo, solo que una en HTML de tabla y la
+         *     otra en componentes React.
+         */
+        HitDetalleOut: {
+            /**
+             * Color Matched
+             * @default true
+             */
+            color_matched: boolean;
+            /** Image */
+            image?: string | null;
+            /** Price */
+            price?: string | null;
+            /** Product */
+            product: string;
+            /** Store */
+            store: string;
+            /** Url */
+            url: string;
+            /** Variant */
+            variant: string;
+            /** Watch */
+            watch: string;
         };
         /** HoldingIn */
         HoldingIn: {
@@ -1645,6 +1677,34 @@ export interface components {
         ReordenarIn: {
             /** Ids */
             ids: string[];
+        };
+        /**
+         * ResultadoOut
+         * @description Subconjunto de ``RunSummary.as_dict()`` que vale la pena mostrar en la
+         *     SPA. Ausente en corridas que no publican JSON estructurado (hoy, solo
+         *     ``stockwatcher run``).
+         */
+        ResultadoOut: {
+            /**
+             * Hit Details
+             * @default []
+             */
+            hit_details: components["schemas"]["HitDetalleOut"][];
+            /**
+             * New Hits
+             * @default 0
+             */
+            new_hits: number;
+            /**
+             * Stores Failed
+             * @default 0
+             */
+            stores_failed: number;
+            /**
+             * Stores Scanned
+             * @default 0
+             */
+            stores_scanned: number;
         };
         /**
          * SesionOut

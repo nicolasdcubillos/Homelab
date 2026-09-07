@@ -15,6 +15,7 @@ import { Link } from "react-router-dom";
 import { useAvisos } from "@/components/Avisos";
 import { Boton } from "@/components/Boton";
 import { Insignia, type Tono } from "@/components/Insignia";
+import { ResultadoEjecucion } from "@/components/ResultadoEjecucion";
 import { IconoDetener, IconoJugar, IconoReloj } from "@/components/iconos";
 import { useCancelar, useLanzar } from "@/lib/consultas";
 import { cx } from "@/lib/cx";
@@ -198,6 +199,15 @@ export function BloqueApp({ app, comandoPrincipal }: Props) {
             </>
           )}
         </div>
+
+        {!app.running && app.last_run?.result && (
+          <div className="mt-4 border-t border-line pt-4">
+            <p className="mb-2 text-caption font-medium text-muted uppercase tracking-wide">
+              Resultado de la última corrida
+            </p>
+            <ResultadoEjecucion resultado={app.last_run.result} />
+          </div>
+        )}
       </div>
     </article>
   );

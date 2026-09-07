@@ -121,6 +121,38 @@ def _colorway_from_title(title: str) -> str | None:
     return title.split(" - ", 1)[1].strip() or None
 
 
+def absolute_image_url(value: Any) -> str | None:
+    """Shopify serves CDN images protocol-relative (``//cdn.shopify.com/...``).
+
+    Fine in a browser, but an email client resolves that against the message's
+    own origin (i.e. nowhere), so the picture never loads.  Force ``https:``.
+    """
+    if not value:
+        return None
+    url = str(value).strip()
+    if not url:
+        return None
+    if url.startswith("//"):
+        return f"https:{url}"
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    return None
+
+
+def _suggest_image(item: dict) -> str | None:
+    return absolute_image_url(item.get("image") or item.get("featured_image"))
+
+
+def _product_image(payload: dict) -> str | None:
+    featured = payload.get("featured_image")
+    if featured:
+        return absolute_image_url(featured)
+    images = payload.get("images") or []
+    if isinstance(images, list) and images:
+        return absolute_image_url(images[0])
+    return None
+
+
 class ShopifyProvider(Provider):
     """Works against any Shopify storefront without credentials."""
 
@@ -168,6 +200,7 @@ class ShopifyProvider(Provider):
                     title=str(item.get("title") or "").strip(),
                     price=money_from_text(item.get("price")),
                     handle=path.rstrip("/").split("/")[-1],
+                    image_url=_suggest_image(item) if isinstance(item, dict) else None,
                     raw=item if isinstance(item, dict) else {},
                 )
             )
@@ -231,6 +264,7 @@ class ShopifyProvider(Provider):
             gender=gender,
             store_host=self.store.host,
             provider=self.name,
+            image_url=_product_image(payload) or ref.image_url,
         )
 
 

@@ -189,3 +189,21 @@ export function IconoLuna({ className }: Props) {
     </svg>
   );
 }
+
+export function IconoEnlaceExterno({ className }: Props) {
+  return (
+    <svg {...BASE} className={className} aria-hidden="true">
+      <path d="M10 6H6.5A2.5 2.5 0 0 0 4 8.5v9A2.5 2.5 0 0 0 6.5 20h9a2.5 2.5 0 0 0 2.5-2.5V14M14 4h6v6M20 4l-9 9" />
+    </svg>
+  );
+}
+
+export function IconoImagen({ className }: Props) {
+  return (
+    <svg {...BASE} className={className} aria-hidden="true">
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+      <circle cx="9" cy="10" r="1.75" />
+      <path d="m5 18 4.5-5 3.5 3.5 2.5-3 4.5 5.5" />
+    </svg>
+  );
+}

@@ -10,11 +10,14 @@ from __future__ import annotations
 import datetime as dt
 import sqlite3
 
+import pytest
+from alembic import command
 from sqlalchemy import inspect, select
 
 from homelab_dashboard.db import create_db_engine, make_session_factory
 from homelab_dashboard.jobs import _SCHEMA as ESQUEMA_LEGADO
 from homelab_dashboard.migrate import (
+    alembic_config,
     current_revision,
     head_revision,
     is_up_to_date,
@@ -35,6 +38,8 @@ TABLAS_ESPERADAS = {
     "portfolio_profiles",
     "schedules",
     "stock_watches",
+    "trading_access",
+    "trading_bot_config",
     "users",
 }
 
@@ -66,6 +71,40 @@ def test_migracion_es_idempotente(tmp_path):
     upgrade_to_head(settings)
     upgrade_to_head(settings)
     assert is_up_to_date(settings)
+
+
+@pytest.mark.parametrize("revision", ["ddf944225582", "de02a901e6ae"])
+def test_unifica_ambas_ramas_sin_perder_ejecuciones(tmp_path, revision):
+    settings = _settings_para(tmp_path)
+    _crear_base_legada(settings.db_path)
+    engine = create_db_engine(settings.db_path)
+    try:
+        config = alembic_config()
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, revision)
+        if revision == "ddf944225582":
+            with sqlite3.connect(settings.db_path) as db:
+                db.execute("UPDATE job_runs SET result_json = ?", ('{"hallazgos": []}',))
+    finally:
+        engine.dispose()
+
+    upgrade_to_head(settings)
+    upgrade_to_head(settings)
+    assert current_revision(settings) == head_revision()
+    engine = create_db_engine(settings.db_path)
+    try:
+        assert TABLAS_ESPERADAS <= set(inspect(engine).get_table_names())
+        with make_session_factory(engine)() as session:
+            runs = session.scalars(select(JobRun).order_by(JobRun.id)).all()
+            assert len(runs) == 2
+            assert runs[0].status == "success"
+            if revision == "ddf944225582":
+                assert runs[0].result == {"hallazgos": []}
+            else:
+                assert runs[0].result is None
+    finally:
+        engine.dispose()
 
 
 def _crear_base_legada(db_path) -> None:

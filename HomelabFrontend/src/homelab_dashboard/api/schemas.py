@@ -541,6 +541,36 @@ class ConfirmarPasswordIn(Esquema):
 # --------------------------------------------------------------------------
 
 
+class HitDetalleOut(Esquema):
+    """Un hallazgo nuevo de StockWatcher, tal como lo publica ``hit_detail``.
+
+    Espejo deliberado de lo que ya recibe el correo (mismo shape que
+    ``notifiers.base.summarize`` + la imagen): la tarjeta que pinta la SPA y
+    la del email deben mostrar lo mismo, solo que una en HTML de tabla y la
+    otra en componentes React.
+    """
+
+    watch: str
+    store: str
+    product: str
+    variant: str
+    price: str | None = None
+    url: str
+    image: str | None = None
+    color_matched: bool = True
+
+
+class ResultadoOut(Esquema):
+    """Subconjunto de ``RunSummary.as_dict()`` que vale la pena mostrar en la
+    SPA. Ausente en corridas que no publican JSON estructurado (hoy, solo
+    ``stockwatcher run``)."""
+
+    new_hits: int = 0
+    stores_scanned: int = 0
+    stores_failed: int = 0
+    hit_details: list[HitDetalleOut] = []
+
+
 class EjecucionOut(EsquemaORM):
     id: int
     app_name: str
@@ -553,6 +583,7 @@ class EjecucionOut(EsquemaORM):
     duration_seconds: float | None
     return_code: int | None
     skip_reason: str | None
+    result: ResultadoOut | None = None
 
 
 class EjecucionesOut(Esquema):

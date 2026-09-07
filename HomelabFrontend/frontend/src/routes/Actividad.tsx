@@ -12,6 +12,7 @@ import { EstadoError, Esqueleto, EsqueletoLista, Vacio } from "@/components/Esta
 import { Hoja } from "@/components/Hoja";
 import { Insignia } from "@/components/Insignia";
 import { Pantalla } from "@/components/Pantalla";
+import { ResultadoEjecucion } from "@/components/ResultadoEjecucion";
 import { IconoActividad } from "@/components/iconos";
 import { useApps, useEjecuciones, useLog } from "@/lib/consultas";
 import { cx } from "@/lib/cx";
@@ -53,6 +54,10 @@ function VisorLog({ ejecucion, onCerrar }: { ejecucion: Ejecucion | null; onCerr
           : undefined
       }
     >
+      {ejecucion?.result && (
+        <ResultadoEjecucion resultado={ejecucion.result} className="mb-4" />
+      )}
+
       {log.isPending && (
         <div className="space-y-2">
           <Esqueleto className="h-4 w-full" />
@@ -77,6 +82,12 @@ function VisorLog({ ejecucion, onCerrar }: { ejecucion: Ejecucion | null; onCerr
                 <span className="relative inline-flex size-2 rounded-full bg-accent" />
               </span>
               Actualizando en vivo…
+            </p>
+          )}
+
+          {ejecucion?.result && (
+            <p className="mb-2 text-caption font-medium text-muted uppercase tracking-wide">
+              Salida completa
             </p>
           )}
 

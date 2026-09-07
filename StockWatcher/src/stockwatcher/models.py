@@ -47,6 +47,7 @@ class ProductRef:
     title: str
     price: Decimal | None = None
     handle: str | None = None
+    image_url: str | None = None
     raw: dict = field(default_factory=dict, compare=False, repr=False)
 
 
@@ -94,6 +95,7 @@ class Product:
     gender: Gender = Gender.UNISEX
     store_host: str = ""
     provider: str = ""
+    image_url: str | None = None
 
     @property
     def searchable_text(self) -> str:
@@ -117,6 +119,7 @@ class Hit:
     colorway: str | None = None
     color_matched: bool = True
     country: str = "US"
+    image_url: str | None = None
     detected_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
@@ -193,6 +196,10 @@ class RunSummary:
     discovered_stores: list[str] = field(default_factory=list)
     #: host -> wall-clock seconds, used to spot a store that drags a run out.
     store_seconds: dict[str, float] = field(default_factory=dict)
+    #: One entry per new hit this run notified about — enough for a caller
+    #: (the dashboard) to render a result card without re-parsing hit text.
+    #: See :func:`stockwatcher.runner.hit_detail`.
+    hit_details: list[dict] = field(default_factory=list)
 
     @property
     def duration_seconds(self) -> float:
@@ -213,6 +220,9 @@ class RunSummary:
             "slowest_stores": dict(
                 sorted(self.store_seconds.items(), key=lambda kv: kv[1], reverse=True)[:5]
             ),
+            # Capped: a caller embedding this in a log line shouldn't have to
+            # bound an unlimited-size run itself.
+            "hit_details": self.hit_details[:200],
             "errors": self.errors[:20],
         }
 
