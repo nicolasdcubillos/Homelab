@@ -59,10 +59,16 @@ en `StockWatcher/` no dispare un redeploy de `PortfolioWatcher` ni de
 |---|---|---|
 | `deploy-stockwatcher.yml` | `StockWatcher/**` | git pull, reinstala venv, reinicia `stockwatcher-run.service` de inmediato (no espera al timer horario), imprime el último resumen |
 | `deploy-portfoliowatcher.yml` | `PortfolioWatcher/**` | git pull, reinstala venv, smoke-check de import, verifica que los timers `daily`/`weekly` sigan activos |
-| `deploy-homelabfrontend.yml` | `HomelabFrontend/**` | git pull, reinstala venv, reinicia `homelab-dashboard.service` (proceso long-running), verifica `curl` 200 |
+| `deploy-homelabfrontend.yml` | `HomelabFrontend/**` | SHA exacto, paquete y SPA aislados, migración sobre copia, backup SQLite, cambio atómico y comprobaciones HTTPS/401 |
 | `deploy-tradinglab.yml` | `TradingLab/**` | checkout del SHA exacto, venv aislado por versión, unidades versionadas, rollback y comprobación de latido reciente |
 
 Todos corren en `runs-on: [self-hosted, homelab-vm]`.
+
+El dashboard (incluido Régimen de mercado) usa
+`/opt/services/homelab-dashboard/current`, sin reemplazar el checkout compartido.
+Los datos mantienen sus rutas anteriores. Tras intentar una nueva migración no
+hay rollback automático de código ni de datos: se conserva el respaldo y se
+requiere recuperación explícita; ver `HomelabFrontend/docs/deployment.md`.
 
 TradingLab no reutiliza el checkout compartido de producción para instalarse:
 su workflow llama a `TradingLab/scripts/deploy.sh`, conserva el estado en

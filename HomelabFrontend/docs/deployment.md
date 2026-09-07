@@ -14,8 +14,11 @@ el unit de systemd y reinicia el servicio. **En condiciones normales no hay que
 tocar la VM a mano**; los pasos manuales de este documento están para entender
 qué hace el workflow, para el primer arranque y para diagnosticar.
 
-En este monorepo el dashboard es la carpeta `HomelabFrontend/` y se despliega
-en `/opt/services/homelab/HomelabFrontend`.
+El código y el SPA se instalan en releases aislados bajo
+`/opt/services/homelab-dashboard/releases/<SHA>.<sufijo>`, con el enlace atómico
+`current` apuntando al activo. La base, `apps.yaml`, `data/` y `logs/` conservan
+sus rutas bajo `/opt/services/homelab/HomelabFrontend`; no se copian entre releases.
+El workflow ya no resetea el checkout compartido ni actualiza su venv en caliente.
 
 Desde la migración a multiusuario, el dashboard tiene su **propia
 autenticación** (registro, login, roles, sesiones), su **propia base de
@@ -25,7 +28,7 @@ FastAPI sirve como estático. Caddy deja de hacer Basic Auth: solo termina TLS.
 ## 0. Prerrequisitos
 
 - La VM ya existe (provisionada vía Terraform, carpeta `PortfolioWatcher/infra`
-  del monorepo), con Python 3.10+, Node 20+, `git` y acceso `sudo`.
+  del monorepo), con Python 3.10+, Node 20.19+ o 22.12+, `git` y acceso `sudo`.
 - Un runner self-hosted de GitHub Actions corriendo en la VM con las etiquetas
   `self-hosted` y `homelab-vm` (servicio
   `actions.runner.nicolasdcubillos-Homelab.homelab-vm-runner`). Es lo que
@@ -109,36 +112,54 @@ Caddy emite y renueva el certificado TLS automáticamente (Let's Encrypt) la
 primera vez que recibe tráfico para ese dominio — no hace falta ningún paso
 manual adicional.
 
-## 4. Clonar y preparar el dashboard
+## 4. Actualizar mediante un release aislado
 
-Solo para el primer arranque; después de esto las actualizaciones las hace el
-workflow:
+El instalador actual actualiza una instalación existente: exige servicio activo,
+base, unit y Caddyfile previos. No es un bootstrap de una VM vacía. El clon y los
+datos persistentes existentes no se modifican durante la construcción.
+Un fallo registrado de despliegue admite recuperación con el servicio detenido.
 
-```bash
-mkdir -p /opt/services
-git clone https://github.com/nicolasdcubillos/Homelab.git /opt/services/homelab
-cd /opt/services/homelab/HomelabFrontend
-python3 -m venv .venv
-./.venv/bin/pip install -e .
-```
-
-El clon pertenece a `azureuser`, no a root: los workflows hacen `git fetch` y
-`pip install` como ese usuario y solo escalan a `sudo` para tocar systemd.
-
-Las actualizaciones posteriores son automáticas (push a `main`). Si necesitas
-forzar una a mano — porque el runner está caído, por ejemplo — esto es
-exactamente lo que hace el workflow:
+El workflow hace checkout del SHA exacto en su workspace e invoca:
 
 ```bash
-cd /opt/services/homelab
-sudo -u azureuser git fetch origin main && sudo -u azureuser git reset --hard origin/main
-cd HomelabFrontend
-sudo -u azureuser ./.venv/bin/pip install -e .
-cd frontend && sudo -u azureuser npm ci && sudo -u azureuser npm run build && cd ..
-sudo install -m 0644 systemd/homelab-dashboard.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl restart homelab-dashboard
-# `migrate` corre solo vía ExecStartPre; no hace falta invocarlo aparte.
+sudo bash HomelabFrontend/scripts/deploy-market-regime.sh "$(git rev-parse HEAD)"
 ```
+
+Para probar un candidato antes de publicarlo, añadir `--prepare-only`: instala
+y valida el release sobre una copia, pero no detiene el servicio, no modifica su
+base ni cambia el enlace activo. El candidato queda conservado para inspección.
+
+El script toma un lock, construye el paquete no editable y el SPA como
+`azureuser`, y deja el release final propiedad de root. Antes de detener el
+servicio, migra una copia privada de SQLite y comprueba la API sin iniciar
+scheduler, workers, proveedores ni envíos. Después de detenerlo guarda otra
+copia consistente en `/var/backups/homelab/dashboard-<fecha>.<sufijo>/dashboard.db`
+(directorio 0700, archivo 0600), cambia el enlace y arranca la nueva versión.
+SQLite backup incorpora el WAL: no sustituirlo por un `cp` del archivo abierto.
+
+Se instala el extra `regime-notifications` para disponer de los SDK de ACS,
+sin cargar credenciales ni habilitar envíos. `REVISION` identifica el código y
+`packages.json` registra las versiones resueltas de cada release.
+
+Los cambios de permisos, consentimientos, claves y configuración operativa
+quedan fuera del instalador. El drop-in de TradingLab se conserva.
+
+**Recuperación:** un fallo previo a la migración permite recuperar código/unit.
+Si se intentó una nueva migración, no se vuelve al paquete anterior: su Alembic
+podría desconocer el nuevo head. Se conservan candidato y respaldo, se detiene
+el servicio y el workflow falla para una recuperación explícita. No se hace
+downgrade ni restauración automática de la base, pues perdería escrituras.
+Diagnosticar con `journalctl -u homelab-dashboard.service`, corregir el candidato
+y ejecutar el instalador con `--recover` (también admite `--prepare-only`).
+Este modo exige un fallo registrado y que la DB, el enlace y la configuración
+systemd sigan siendo los registrados; no adopta cualquier servicio detenido.
+Repite preflight y backup, sin restaurar el paquete que ya falló. Restaurar una
+base requiere una decisión operativa
+separada y conservar antes el estado fallido para no perder datos.
+
+Las copias y releases se conservan; revisar espacio y retirar manualmente
+solamente históricos que ya no se necesiten. Nunca borrar `current`, su destino
+ni el último respaldo necesario para recuperar una migración.
 
 También puedes relanzar el despliegue sin cambiar código desde la pestaña
 Actions del repo (`workflow_dispatch`), o con
@@ -149,7 +170,7 @@ Actions del repo (`workflow_dispatch`), o con
 El servidor sirve `frontend/dist` como estático (con fallback SPA para
 cualquier ruta que no sea `/api/*`). Como el `dist/` no se versiona (ver
 `.gitignore`), hay que compilarlo en la VM tras cada cambio del frontend —
-**esto lo hace el paso "Build frontend (SPA)" del workflow**, no tú.
+**esto lo hace el script de despliegue en su directorio temporal**, no tú.
 
 Node se instala una sola vez con NodeSource (Ubuntu):
 
@@ -159,7 +180,8 @@ sudo apt-get install -y -qq nodejs
 node -v   # v20.x
 ```
 
-Y la compilación, si la haces a mano:
+Una compilación manual en un checkout sirve para desarrollo, no cambia el SPA
+productivo:
 
 ```bash
 cd /opt/services/homelab/HomelabFrontend/frontend
@@ -198,15 +220,20 @@ histórico de `job_runs`), `DASHBOARD_FRONTEND_DIST` (el `dist/` del paso 5) y
 `ExecStartPre=... migrate`, que aplica las migraciones de Alembic antes de
 arrancar, en cada reinicio.
 
-El primer arranque, a mano:
+El unit usa el binario y el SPA de `current`, conservando el directorio de
+trabajo y todas las rutas persistentes. No instalar este unit antes de que
+exista un release. El instalador hace el cambio coordinado.
+
+El archivo opcional `/etc/homelab/market-regime.env` admite únicamente claves
+`DASHBOARD_REGIME_*`, una por línea; debe ser de root y modo 0600. No puede
+cambiar la DB, el puerto ni el scheduler global. No se copian claves de otros
+servicios. Los envíos del módulo permanecen desactivados por defecto.
+
+Diagnóstico:
 
 ```bash
-sudo install -m 0644 \
-  /opt/services/homelab/HomelabFrontend/systemd/homelab-dashboard.service \
-  /etc/systemd/system/homelab-dashboard.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now homelab-dashboard.service
 systemctl is-active homelab-dashboard.service
+sudo cat /opt/services/homelab-dashboard/current/REVISION
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/   # 200 esperado
 ```
 
@@ -217,7 +244,10 @@ VM — la contraseña se pide de forma interactiva, nunca por argumento:
 
 ```bash
 cd /opt/services/homelab/HomelabFrontend
-./.venv/bin/homelab-dashboard create-admin --email tu-correo@ejemplo.com
+sudo env DASHBOARD_DB_FILE=/opt/services/homelab/HomelabFrontend/dashboard.db \
+  DASHBOARD_DATA_DIR=/opt/services/homelab/HomelabFrontend/data \
+  /opt/services/homelab-dashboard/current/.venv/bin/homelab-dashboard \
+  create-admin --email tu-correo@ejemplo.com
 ```
 
 Entra a `https://tu-dominio/` y usa ese correo y contraseña para iniciar
