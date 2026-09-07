@@ -2,8 +2,7 @@
 
 Ningún test de este paquete importa Lumibot. El motor real vive detrás del
 protocolo `Motor` justo para eso: lo que se puede probar aquí se prueba de
-verdad, y lo que necesita credenciales se valida en la VM con
-`tradinglab doctor`.
+verdad. `tradinglab doctor` es diagnóstico local y no valida cuentas o conexiones.
 """
 
 from __future__ import annotations

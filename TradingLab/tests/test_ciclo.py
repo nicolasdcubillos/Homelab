@@ -20,8 +20,8 @@ from tradinglab.ciclo import (
     Ciclo,
 )
 from tradinglab.config import ConfigCompartida
-from tradinglab.corredor import CorredorSimulado, Ejecucion, ErrorDeCorredor
-from tradinglab.estado import COMPRA, AlmacenEstado, Apertura
+from tradinglab.corredor import CorredorSimulado, Ejecucion, ErrorDeCorredor, MotorSimulado
+from tradinglab.estado import COMPRA, VENTA, AlmacenEstado, Apertura
 from tradinglab.estrategia import ENTRAR, MANTENER, SALIR, Senal
 
 # ---------------------------------------------------------------------------
@@ -84,6 +84,9 @@ class CorredorFijo:
 
     def efectivo(self) -> float:
         return 1_000_000.0
+
+    def costo_compra(self, instrumento: str, cantidad: float) -> float:
+        return 0.0
 
     def cerrar(self) -> None:
         self.abierto = False
@@ -431,16 +434,157 @@ def test_el_detalle_resume_el_movimiento(almacen: AlmacenEstado) -> None:
 
 
 def test_un_viaje_de_ida_y_vuelta_pierde_por_el_deslizamiento(almacen: AlmacenEstado) -> None:
-    """El deslizamiento siempre juega en contra, y por eso lleva signo.
-
-    Si se aplicara como un costo aparte, un viaje de ida y vuelta en un mercado
-    plano saldría a cero y la simulación mentiría a favor.
-    """
+    """El coste aparece una sola vez, tanto en saldo como en el PnL publicado."""
     corredor = CorredorSimulado(series={"AAPL": [100.0] * 60}, costo_pct=0.5)
 
     compra = corredor.comprar("AAPL", 10)
     venta = corredor.vender("AAPL", 10)
 
-    assert compra.precio > 100.0
-    assert venta.precio < 100.0
-    assert corredor.efectivo() < 10_000.0
+    identificador = almacen.registrar_apertura(
+        Apertura("AAPL", COMPRA, compra.cantidad, compra.precio, compra.costos)
+    )
+    almacen.registrar_cierre(identificador, precio_salida=venta.precio, costos_salida=venta.costos)
+    assert compra.precio == venta.precio == 100.0
+    assert compra.costos == venta.costos == 5.0
+    assert corredor.efectivo() - 10_000 == pytest.approx(-10.0)
+    assert almacen.ultimas(1)[0]["pnl_absoluto"] == pytest.approx(-10.0)
+
+
+@pytest.mark.parametrize("cantidad", [0, -1, 1.5, float("nan"), float("inf")])
+def test_simulador_rechaza_cantidades_invalidas(cantidad):
+    corredor = CorredorSimulado()
+    with pytest.raises(ErrorDeCorredor):
+        corredor.comprar("AAPL", cantidad)
+    assert corredor.saldo == 10_000
+
+
+def test_simulador_no_crea_short_ni_margen():
+    corredor = CorredorSimulado(series={"AAPL": [100.0]}, saldo=100.0)
+    with pytest.raises(ErrorDeCorredor, match="efectivo insuficiente"):
+        corredor.comprar("AAPL", 2)
+    with pytest.raises(ErrorDeCorredor, match="no se permite short"):
+        corredor.vender("AAPL", 1)
+    assert corredor.saldo == 100.0
+
+
+def test_ciclo_no_vende_una_posicion_corta(almacen):
+    almacen.registrar_apertura(Apertura("AAPL", VENTA, 5, 100))
+    corredor = CorredorFijo({"AAPL": 110, "MSFT": 100})
+    resultado = _ciclo(almacen, corredor, estrategia=EstrategiaFija(accion_fuera=ENTRAR)).ejecutar()
+    assert resultado.incidencias
+    assert not corredor.ventas
+    assert not corredor.compras
+
+
+def test_mercado_cerrado_tampoco_encola_salidas(almacen):
+    almacen.registrar_apertura(Apertura("AAPL", COMPRA, 5, 100))
+    corredor = CorredorFijo({"AAPL": 80}, abierto=False)
+    assert _ciclo(almacen, corredor).ejecutar().cierres == 0
+    assert not corredor.ventas
+
+
+def test_cierre_parcial_no_cierra_toda_la_posicion(almacen):
+    almacen.registrar_apertura(Apertura("AAPL", COMPRA, 5, 100))
+    corredor = CorredorFijo({"AAPL": 80})
+    corredor.vender = lambda instrumento, cantidad: Ejecucion(instrumento, 2, 80)
+    with pytest.raises(ValueError, match="no conciliada"):
+        _ciclo(almacen, corredor).ejecutar()
+    assert almacen.abiertas()[0].cantidad == 5
+
+
+def test_capital_de_configuracion_no_sustituye_efectivo(almacen):
+    corredor = CorredorFijo({"AAPL": 100, "MSFT": 100})
+    corredor.efectivo = lambda: 250.0
+    _ciclo(almacen, corredor, estrategia=EstrategiaFija(accion_fuera=ENTRAR)).ejecutar()
+    assert corredor.compras == [("AAPL", 2.0)]
+
+
+def test_costos_caben_en_el_presupuesto_sin_margen(almacen):
+    corredor = CorredorSimulado(series={"AAPL": [100.0]}, saldo=1000.0, costo_pct=0.5)
+    resultado = _ciclo(
+        almacen,
+        corredor,
+        estrategia=EstrategiaFija(accion_fuera=ENTRAR),
+        config=_config(instrumentos=("AAPL",), capital_simulado=1000, max_posiciones_abiertas=1),
+    ).ejecutar()
+    assert resultado.aperturas == 1
+    assert almacen.abiertas()[0].cantidad == 9
+    assert corredor.saldo == pytest.approx(95.5)
+
+
+def test_stop_loss_no_reabre_el_mismo_ticker_en_el_ciclo(almacen):
+    almacen.registrar_apertura(Apertura("AAPL", COMPRA, 5, 100))
+    corredor = CorredorFijo({"AAPL": 90})
+    resultado = _ciclo(
+        almacen,
+        corredor,
+        estrategia=EstrategiaFija(accion_fuera=ENTRAR),
+        config=_config(instrumentos=("AAPL",)),
+    ).ejecutar()
+    assert resultado.cierres == 1
+    assert resultado.aperturas == 0
+
+
+def test_reinicio_demo_restaura_efectivo_posiciones_y_precios(tmp_path):
+    ruta = tmp_path / "demo.db"
+    with AlmacenEstado(ruta) as almacen:
+        almacen.vincular("simulado")
+        motor = MotorSimulado(
+            CorredorSimulado(series={"AAPL": [100.0] * 60}),
+            almacen,
+            capital_inicial=1000,
+        )
+        config = _config(instrumentos=("AAPL",), capital_simulado=1000)
+        motor.ejecutar(
+            lambda corredor: _ciclo(
+                almacen,
+                corredor,
+                estrategia=EstrategiaFija(accion_fuera=ENTRAR),
+                config=config,
+            ).ejecutar()
+        )
+        saldo = motor.corredor.saldo
+        posiciones = dict(motor.corredor.posiciones)
+        precios = list(motor.corredor.series["AAPL"])
+        motor.cerrar()
+    with AlmacenEstado(ruta) as almacen:
+        almacen.vincular("simulado")
+        # Cambiar capital configurado no recarga la cuenta demo ni borra su historia.
+        motor = MotorSimulado(almacen=almacen, capital_inicial=9999)
+
+        def comprobar(corredor):
+            assert corredor.saldo == pytest.approx(saldo)
+            assert corredor.posiciones == posiciones
+            assert corredor.series["AAPL"] == precios
+
+        motor.ejecutar(comprobar)
+        motor.ejecutar(
+            lambda corredor: _ciclo(
+                almacen,
+                corredor,
+                estrategia=EstrategiaFija(accion_dentro=SALIR),
+                config=config,
+            ).ejecutar()
+        )
+        assert not almacen.abiertas()
+        assert motor.corredor.saldo == pytest.approx(1000 + almacen.ultimas(1)[0]["pnl_absoluto"])
+
+
+def test_ciclo_demo_fallido_se_revierte_antes_del_reintento(almacen):
+    almacen.vincular("simulado")
+    motor = MotorSimulado(CorredorSimulado(series={"AAPL": [100.0]}), almacen)
+
+    def fallar(corredor):
+        ejecucion = corredor.comprar("AAPL", 1)
+        almacen.registrar_apertura(Apertura("AAPL", COMPRA, 1, ejecucion.precio, ejecucion.costos))
+        raise ValueError("fallo tras comprar")
+
+    with pytest.raises(ValueError, match="fallo tras comprar"):
+        motor.ejecutar(fallar)
+    assert not almacen.abiertas()
+
+    def comprobar(corredor):
+        assert corredor.saldo == 10_000
+        assert not corredor.posiciones
+
+    motor.ejecutar(comprobar)

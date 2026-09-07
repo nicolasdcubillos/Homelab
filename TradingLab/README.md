@@ -2,9 +2,11 @@
 
 Motor de trading **simulado** de acciones y ETFs para el dashboard del homelab.
 
-Lee la configuración que los usuarios autorizados guardan desde el panel, opera
-contra **Alpaca Paper** a través de [Lumibot](https://lumibot.lumiwealth.com/) y
-publica su estado en un SQLite que el dashboard lee en solo lectura.
+Lee la configuración compartida del panel y publica su estado en SQLite.
+**Alpaca Paper está bloqueado preventivamente**: no importa Lumibot, conecta ni
+envía órdenes. Solo el simulador local puede operar, con precios inventados y
+una base separada. El supervisor paper puede arrancar en pausa sin credenciales
+ni SDK. Véase [Fiabilidad y límites](docs/fiabilidad.md).
 
 > **Solo dinero simulado.** No hay ninguna ruta de código que toque una cuenta
 > real, y la tabla de configuración del dashboard tiene un `CHECK` que solo
@@ -29,9 +31,8 @@ publica su estado en un SQLite que el dashboard lee en solo lectura.
 
 Ninguna de las dos aplicaciones escribe en la base de la otra. Nadie le ordena
 a TradingLab arrancar o parar: el dashboard publica `enabled`, y este proceso lo
-relee en cada vuelta. La consecuencia práctica es que **apagar el bot desde el
-celular funciona aunque el proceso esté a mitad de una decisión**, porque no hay
-ninguna orden que se pueda perder.
+relee en cada vuelta y antes de cada orden demo. Pausar detiene las decisiones;
+**no liquida posiciones ni deja stop loss activo**.
 
 El contrato completo está en
 [`HomelabFrontend/docs/trading.md`](../HomelabFrontend/docs/trading.md).
@@ -42,7 +43,7 @@ El contrato completo está en
 cd TradingLab
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"          # núcleo + herramientas de desarrollo
-pip install -e ".[alpaca,dev]"   # además, el motor real
+# No instalar el extra alpaca: no desbloquea la ejecución.
 ```
 
 El núcleo **no tiene dependencias**: el bucle, el contrato con el dashboard y la
@@ -57,16 +58,17 @@ contabilidad corren y se prueban sin instalar Lumibot.
 
 ```bash
 tradinglab correr                # bucle de supervisión (lo que corre en systemd)
-tradinglab correr --simulado     # contra precios inventados, sin Alpaca ni credenciales
+tradinglab --db data/demo.db correr --simulado  # base demo separada, precios inventados
 tradinglab correr --una-vez      # una sola vuelta y salir
 tradinglab estado                # último latido y posiciones abiertas
 tradinglab operaciones           # las últimas operaciones registradas
-tradinglab doctor                # comprueba el entorno sin enviar una sola orden
+tradinglab doctor                # diagnóstico local; no prueba conexión Alpaca
 ```
 
-`--simulado` sirve para **arrancar antes de tener credenciales**: el dashboard
-empieza a recibir latidos y operaciones de verdad contra precios generados con
-una semilla fija, lo que verifica todo el contrato menos la última milla.
+`--simulado` exige una ruta `--db` explícita y no adopta una base paper.
+Persiste saldo, posiciones y evolución de los precios demo; cambiar el capital
+configurado no recarga la cuenta. Su rentabilidad no representa resultados de
+Alpaca ni una estimación de retornos reales.
 
 ## Variables de entorno
 
@@ -108,9 +110,8 @@ los que valida `HomelabFrontend/src/homelab_dashboard/trading.py`:
 Están las dos y no una sola porque fallan en situaciones opuestas: el cruce
 pierde en mercados laterales, la reversión pierde en tendencias fuertes.
 
-Un nombre desconocido **no mata el bot**: se usa la estrategia por defecto y el
-aviso viaja hasta el detalle que se ve en el panel. Una errata al configurar no
-debería dejar el motor muerto sin explicación.
+Un nombre desconocido o una configuración inválida **bloquea el ciclo y publica
+el error**. No se sustituye silenciosamente por otra estrategia, límite o marco.
 
 Ese comportamiento es la red de seguridad, no el mecanismo principal: el panel
 ofrece estas dos en un **selector**, así que en la práctica no se teclean. La
@@ -121,36 +122,29 @@ rompa la compilación mental de alguien antes que la elección del usuario.
 
 ## Decisiones de diseño
 
-**El latido va separado del ciclo de trading.** El bot late cada minuto, pase lo
-que pase, y evalúa el mercado cada `timeframe`. Mezclarlos estaría mal por dos
-motivos: el dashboard da por caído a un motor que lleva más de 90 minutos sin
-latir, así que un bot en velas diarias aparecería como muerto 22 horas de cada
-24; y en sentido contrario, un latido que solo ocurre al evaluar responde a la
-pregunta equivocada —lo que el panel quiere saber es si el proceso está vivo, no
-cuándo miró los precios por última vez.
+**El latido tiene cadencia distinta, no un hilo concurrente.** Se publica cada
+minuto entre ciclos demo. Un ciclo bloqueante también retrasaría el latido;
+por eso el motor de red permanece bloqueado. `SIGTERM` interrumpe la espera
+entre vueltas y la salida publica `detenido`, también con `--una-vez`.
 
-**Sin WAL en la base propia.** Un lector que abre con `mode=ro` necesita poder
-escribir el archivo `-shm` para acceder a una base en WAL. El dashboard abre
-justo así, y si los dos procesos no comparten usuario fallaría con un «unable to
-open database file» dificilísimo de diagnosticar. Aquí se escriben unas pocas
-filas por hora: la concurrencia no es el problema a optimizar.
+**Sin WAL en la base propia.** Evita depender de archivos auxiliares y permisos
+compartidos. SQLite reciente admite lectores WAL en solo lectura bajo ciertas
+condiciones; no se asume que cualquier montaje pueda crearlos.
 
 **Todas las marcas de tiempo son ISO-8601 UTC con `+00:00`, nunca `Z`.** El
 dashboard ordena con `ORDER BY abierta_en DESC`, y en ese formato el orden
 alfabético coincide con el cronológico.
 
-**Solo posiciones largas.** El esquema admite `venta` porque el contrato es
-común con Freqtrade, que sí opera en corto; pero vender acciones en corto exige
-localización de títulos.
+**Solo posiciones largas.** El esquema admite `venta` como vocabulario común,
+pero el ciclo la rechaza y nunca vende para cerrar una posición corta.
 
 **Acciones enteras.** Alpaca admite fraccionarias solo en algunos tickers y con
 reglas propias. Redondear hacia abajo es aburrido, funciona siempre y deja la
 contabilidad exacta.
 
-**El deslizamiento vive en el corredor, no en el ciclo.** Alpaca Paper ya
-devuelve un precio de llenado con deslizamiento real incorporado; añadirlo
-encima lo contaría dos veces. El corredor simulado sí se lo inventa, o la
-simulación mentiría sistemáticamente a favor.
+**El coste demo se descuenta una sola vez.** El precio registrado es de referencia
+y el deslizamiento se cobra en `costos`. El PnL neto coincide con el cambio de
+saldo de ida y vuelta; las compras incluyen costos dentro del presupuesto.
 
 **El freno diario frena entradas, no salidas**, y cuenta solo el PnL cerrado:
 una posición abierta que va perdiendo todavía puede darse la vuelta.
@@ -178,9 +172,9 @@ ruff format --check .
 pytest -q
 ```
 
-Los tests **no importan Lumibot** a propósito: todo lo que se puede probar sin
-credenciales se prueba de verdad, y el camino de Alpaca se valida en la VM con
-`tradinglab doctor`.
+Los tests usan un SDK falso para comprobar el bloqueo y los contratos de lectura,
+sin instalar Lumibot. `doctor` no valida el camino Alpaca y devuelve código 1
+mientras siga bloqueado; no imprime credenciales ni consulta la red.
 
 ## Despliegue
 

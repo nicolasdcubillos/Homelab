@@ -15,6 +15,7 @@ import pytest
 from conftest import CONFIG_BASE, escribir_config
 from tradinglab.config import ErrorDeConfig, LectorDashboard
 from tradinglab.corredor import Corredor, CorredorSimulado, MotorSimulado
+from tradinglab.corredor_alpaca import MotorAlpaca
 from tradinglab.estado import AlmacenEstado
 from tradinglab.supervisor import Supervisor, SupervisorConTRM
 
@@ -378,3 +379,89 @@ def test_una_trm_que_falla_no_bloquea_nada(db_dashboard: Path, almacen: AlmacenE
     latido = almacen.ultimo_latido()
     assert latido is not None
     assert "falló" not in latido["detalle"]
+
+
+def test_timeframe_nuevo_reconstruye_el_motor(db_dashboard, almacen):
+    motores = []
+
+    def fabricar(config):
+        motor = MotorEspia()
+        motores.append((config.timeframe, motor))
+        return motor
+
+    supervisor = Supervisor(LectorDashboard(db_dashboard), almacen, fabricar)
+    escribir_config(db_dashboard, datos={**CONFIG_BASE, "timeframe": "1d"})
+    supervisor.tick()
+    escribir_config(db_dashboard, version=2, datos={**CONFIG_BASE, "timeframe": "5m"})
+    supervisor.tick()
+    assert [marco for marco, motor in motores] == ["1d", "5m"]
+    assert motores[0][1].cerrado
+    assert motores[1][1].ejecuciones == 1
+
+
+def test_error_de_config_suelta_motor_y_no_marca_version_aplicada(db_dashboard, almacen):
+    escribir_config(db_dashboard)
+    motor = MotorEspia()
+    supervisor = _supervisor(LectorDashboard(db_dashboard), almacen, motor)
+    supervisor.tick()
+    escribir_config(db_dashboard, version=2, crudo="no JSON")
+    supervisor.tick()
+    assert motor.cerrado
+    assert almacen.ultimo_latido()["estado"] == "error"
+    assert almacen.ultimo_latido()["config_version"] == 1
+
+
+def test_paper_bloqueado_late_sin_ordenes_ni_version_aplicada(db_dashboard, almacen):
+    escribir_config(db_dashboard)
+    supervisor = Supervisor(
+        LectorDashboard(db_dashboard),
+        almacen,
+        lambda config: MotorAlpaca(),
+        modo="alpaca_paper",
+    )
+    supervisor.tick()
+    latido = almacen.ultimo_latido()
+    assert latido["estado"] == "bloqueado"
+    assert latido["modo"] == "alpaca_paper"
+    assert latido["config_version"] is None
+    assert "No se envían órdenes" in latido["detalle"]
+    assert not almacen.abiertas()
+
+
+def test_al_salir_el_latido_no_afirma_que_sigue_operando(db_dashboard, almacen):
+    escribir_config(db_dashboard)
+    _supervisor(LectorDashboard(db_dashboard), almacen).correr(vueltas=1)
+    assert almacen.ultimo_latido()["estado"] == "detenido"
+    assert "posiciones no liquidadas" in almacen.ultimo_latido()["detalle"]
+
+
+def test_la_ultima_posicion_se_cierra_al_retirar_todos_los_tickers(db_dashboard, almacen):
+    from tradinglab.estado import COMPRA, Apertura
+
+    escribir_config(db_dashboard, datos={**CONFIG_BASE, "instrumentos": []})
+    almacen.registrar_apertura(Apertura("AAPL", COMPRA, 1, 100))
+    motor = MotorSimulado(CorredorSimulado(series={"AAPL": [100]}, posiciones={"AAPL": 1}))
+    supervisor = _supervisor(LectorDashboard(db_dashboard), almacen, motor)
+    supervisor.tick()
+    assert not almacen.abiertas()
+
+
+def test_releer_permiso_impide_orden_con_config_vieja(db_dashboard, almacen):
+    escribir_config(db_dashboard)
+    supervisor = _supervisor(LectorDashboard(db_dashboard), almacen)
+    config = supervisor.lector.leer()
+    escribir_config(db_dashboard, habilitado=False, version=2)
+    with pytest.raises(ErrorDeConfig, match="interrumpida"):
+        supervisor._comprobar_permiso(config)
+
+
+def test_pausa_con_posiciones_no_promete_stop_loss(db_dashboard, almacen):
+    from tradinglab.estado import COMPRA, Apertura
+
+    escribir_config(db_dashboard, habilitado=False)
+    almacen.registrar_apertura(Apertura("AAPL", COMPRA, 1, 100))
+    _supervisor(LectorDashboard(db_dashboard), almacen).tick()
+    latido = almacen.ultimo_latido()
+    assert latido["estado"] == "pausado"
+    assert "stops sin supervisión" in latido["detalle"]
+    assert almacen.abiertas()

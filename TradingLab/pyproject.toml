@@ -7,7 +7,7 @@ name = "tradinglab"
 version = "0.1.0"
 description = "Motor de trading simulado de acciones y ETFs para el dashboard del homelab."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 # El núcleo no depende de nada fuera de la biblioteca estándar, y es a
 # propósito: el bucle de supervisión, el contrato con el dashboard y la
@@ -31,7 +31,7 @@ packages = ["src/tradinglab"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]

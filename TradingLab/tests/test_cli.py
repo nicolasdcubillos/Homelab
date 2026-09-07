@@ -117,11 +117,7 @@ def test_operaciones_sin_nada_no_es_un_error(tmp_path: Path, capsys: pytest.Capt
 def test_doctor_señala_lo_que_falta(
     tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`doctor` es la única forma de validar el camino de Alpaca en la VM.
-
-    Sin credenciales ni Lumibot instalado tiene que fallar, y decir exactamente
-    qué falta.
-    """
+    """El diagnóstico local explica el bloqueo sin anunciar una conexión válida."""
     monkeypatch.delenv("ALPACA_API_KEY", raising=False)
     monkeypatch.delenv("ALPACA_API_SECRET", raising=False)
     dashboard, propia = _rutas(tmp_path)
@@ -153,5 +149,46 @@ def test_las_rutas_salen_del_entorno(tmp_path: Path, monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("TRADINGLAB_DASHBOARD_DB", dashboard)
     monkeypatch.setenv("TRADINGLAB_DB", propia)
 
-    assert main(["correr", "--simulado", "--una-vez"]) == 0
+    assert main(["correr", "--una-vez"]) == 0
     assert Path(propia).exists()
+
+
+def test_demo_exige_ruta_explicita_y_no_usa_la_db_de_produccion(tmp_path, monkeypatch):
+    produccion = tmp_path / "produccion.db"
+    monkeypatch.setenv("TRADINGLAB_DB", str(produccion))
+    assert main(["correr", "--simulado", "--una-vez"]) == 2
+    assert not produccion.exists()
+
+
+def test_paper_pausado_sin_sdk_ni_credenciales(tmp_path, monkeypatch):
+    monkeypatch.delenv("ALPACA_API_KEY", raising=False)
+    monkeypatch.delenv("ALPACA_API_SECRET", raising=False)
+    dashboard, propia = _rutas(tmp_path)
+    escribir_config(Path(dashboard), habilitado=False)
+    assert main(["--db-dashboard", dashboard, "--db", propia, "correr", "--una-vez"]) == 0
+    with AlmacenEstado(propia) as almacen:
+        assert almacen.ultimo_latido()["estado"] == "detenido"
+        assert almacen.ultimo_latido()["modo"] == "alpaca_paper"
+        assert not almacen.abiertas()
+        assert (
+            almacen.conexion.execute("SELECT modo FROM identidad_motor").fetchone()[0]
+            == "alpaca_paper"
+        )
+
+
+def test_doctor_no_confirma_conexion_ni_revela_claves(tmp_path, monkeypatch, capsys):
+    dashboard, propia = _rutas(tmp_path)
+    escribir_config(Path(dashboard))
+    monkeypatch.setenv("ALPACA_API_KEY", "secreto-prueba")
+    monkeypatch.setattr("tradinglab.corredor_alpaca.disponible", lambda: True)
+
+    def sin_red(*args, **kwargs):
+        raise AssertionError("doctor no debe usar red")
+
+    monkeypatch.setattr("tradinglab.trm.ProveedorTRM.obtener", sin_red)
+    assert main(["--db-dashboard", dashboard, "--db", propia, "doctor"]) == 1
+    salida = capsys.readouterr().out
+    assert "No comprueba conexión" in salida
+    assert "bloqueado" in salida
+    assert "secreto-prueba" not in salida
+    assert "Todo listo" not in salida

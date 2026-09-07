@@ -69,12 +69,12 @@ def _ruta_propia(args: argparse.Namespace) -> Path:
     return Path(ruta).expanduser()
 
 
-def _fabrica(args: argparse.Namespace):
+def _fabrica(args: argparse.Namespace, almacen: AlmacenEstado):
     """Decide qué motor se usa: el simulado o Lumibot sobre Alpaca."""
     if args.simulado:
 
-        def simulado(_config):
-            return MotorSimulado()
+        def simulado(config):
+            return MotorSimulado(almacen=almacen, capital_inicial=config.capital_simulado)
 
         return simulado
 
@@ -97,31 +97,33 @@ def _fabrica(args: argparse.Namespace):
 
 
 def cmd_correr(args: argparse.Namespace) -> int:
+    if args.simulado and not args.db:
+        raise ErrorDeConfig("--simulado exige --db con una ruta demo separada de producción.")
     lector = LectorDashboard(_ruta_dashboard(args))
     almacen = AlmacenEstado(_ruta_propia(args))
+    modo = "simulado" if args.simulado else "alpaca_paper"
 
     with almacen:
+        almacen.vincular(modo)
         supervisor = SupervisorConTRM(
             lector=lector,
             almacen=almacen,
-            fabrica_motor=_fabrica(args),
-            proveedor_trm=None if args.sin_trm else ProveedorTRM().obtener,
+            fabrica_motor=_fabrica(args, almacen),
+            proveedor_trm=ProveedorTRM().obtener if args.simulado and not args.sin_trm else None,
+            modo=modo,
         )
 
         def parar(numero, _marco):
             log.info("señal %s recibida; cerrando ordenadamente", numero)
             supervisor.parar()
 
-        # SIGTERM es la que manda systemd al parar la unidad. Lumibot instala su
-        # propio manejador de SIGINT dentro de `run_all`, pero solo de SIGINT y
-        # solo mientras dura la llamada; el nuestro sobrevive alrededor.
+        # SIGTERM interrumpe la espera entre vueltas sin liquidar posiciones.
         for numero in (signal.SIGINT, signal.SIGTERM):
             try:
                 signal.signal(numero, parar)
             except (ValueError, OSError):  # pragma: no cover - hilo o plataforma
                 log.debug("no se pudo instalar el manejador de %s", numero)
 
-        modo = "simulado" if args.simulado else "Alpaca Paper"
         log.info("TradingLab %s arrancando (motor %s)", __version__, modo)
         vueltas = 1 if args.una_vez else args.vueltas
         dadas = supervisor.correr(vueltas=vueltas)
@@ -143,6 +145,8 @@ def cmd_estado(args: argparse.Namespace) -> int:
         print(f"Último latido : {latido['latido_en']}")
         print(f"Versión       : {latido['version'] or '—'}")
         print(f"Detalle       : {latido['detalle']}")
+        print(f"Estado        : {latido['estado'] or 'desconocido'}")
+        print(f"Origen        : {latido['modo'] or 'desconocido'}")
         print(f"Abiertas      : {latido['posiciones_abiertas']}")
 
         abiertas = almacen.abiertas()
@@ -188,12 +192,9 @@ def cmd_operaciones(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    """Comprueba el entorno sin enviar una sola orden.
-
-    Es la única forma de validar el camino de Alpaca, que no se puede probar en
-    los tests: requiere credenciales reales y las dependencias de Lumibot.
-    """
+    """Diagnóstico local: no prueba conexión, cuenta, horario ni permisos Alpaca."""
     problemas = 0
+    print("Diagnóstico local. No comprueba conexión, cuenta ni horario de Alpaca.")
 
     ruta_dashboard = _ruta_dashboard(args)
     print(f"Base del dashboard : {ruta_dashboard}")
@@ -226,34 +227,18 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     print(f"\nEstrategias        : {', '.join(sorted(DISPONIBLES))}")
 
     print("\nMotor de Alpaca")
-    from .corredor_alpaca import disponible
+    from .corredor_alpaca import BLOQUEO_ALPACA, disponible
 
     if not disponible():
-        print("  ✗ lumibot no está instalado (pip install -e '.[alpaca]')")
-        problemas += 1
+        print("  lumibot no está instalado; no hace falta para el supervisor pausado.")
     else:
-        print("  ✓ lumibot importable")
-        clave = os.environ.get("ALPACA_API_KEY", "").strip()
-        secreto = os.environ.get("ALPACA_API_SECRET", "").strip()
-        if clave and secreto:
-            print(f"  ✓ credenciales presentes (clave …{clave[-4:]})")
-        else:
-            print("  ✗ faltan ALPACA_API_KEY y/o ALPACA_API_SECRET")
-            problemas += 1
-
-    print("\nTRM del día")
-    tasa = ProveedorTRM().obtener()
-    if tasa:
-        print(f"  ✓ {tasa:,.2f} COP/USD")
-    else:
-        print("  ⚠ no disponible; las operaciones se anotarán sin tasa")
+        print("  Paquete lumibot presente; no importado ni validado.")
+    print(f"  ✗ {BLOQUEO_ALPACA}")
+    problemas += 1
 
     print()
-    if problemas:
-        print(f"{problemas} problema(s) que impiden operar con dinero simulado real.")
-        return 1
-    print("Todo listo.")
-    return 0
+    print(f"{problemas} bloqueo(s). El supervisor puede permanecer en pausa sin credenciales.")
+    return 1
 
 
 # ---------------------------------------------------------------------------
@@ -309,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.func(args))
     except KeyboardInterrupt:
         return 130
-    except ErrorDeConfig as exc:
+    except (ErrorDeConfig, ValueError) as exc:
         log.error("%s", exc)
         return 2
 

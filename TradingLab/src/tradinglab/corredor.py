@@ -18,10 +18,13 @@ a mano o la simulación miente sistemáticamente a favor.
 from __future__ import annotations
 
 import logging
+import math
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, TypeVar
+
+from .estado import AlmacenEstado
 
 log = logging.getLogger("tradinglab.corredor")
 
@@ -75,6 +78,10 @@ class Corredor(Protocol):
 
     def efectivo(self) -> float:
         """Dinero simulado disponible."""
+        ...
+
+    def costo_compra(self, instrumento: str, cantidad: float) -> float:
+        """Costos de una compra, adicionales al precio de referencia."""
         ...
 
     def cerrar(self) -> None:
@@ -137,6 +144,7 @@ class CorredorSimulado:
     precio_inicial: float = 100.0
     volatilidad_pct: float = 1.2
     _abierto: bool = True
+    posiciones: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._azar = random.Random(self.semilla)
@@ -188,26 +196,41 @@ class CorredorSimulado:
     # ------------------------------------------------------------------ órdenes
 
     def _ejecutar(self, instrumento: str, cantidad: float, signo: int) -> Ejecucion:
+        if not self._abierto:
+            raise ErrorDeCorredor("mercado simulado cerrado")
+        if not math.isfinite(cantidad) or cantidad <= 0 or cantidad != int(cantidad):
+            raise ErrorDeCorredor("la cantidad debe ser un entero positivo")
         precio = self.precio(instrumento)
-        if precio is None:
+        if precio is None or not math.isfinite(precio) or precio <= 0:
             raise ErrorDeCorredor(f"sin precio para {instrumento}")
-        # El deslizamiento siempre juega en contra: se compra un poco más caro
-        # y se vende un poco más barato. Aplicarlo con signo, y no como un
-        # costo aparte, es lo que hace que un viaje de ida y vuelta pierda
-        # dinero en un mercado plano, tal como ocurre de verdad.
-        efectivo = precio * (1 + signo * self.costo_pct / 100.0)
-        costo = abs(efectivo - precio) * cantidad
-        self.saldo -= signo * efectivo * cantidad
+        if not math.isfinite(self.costo_pct) or not 0 <= self.costo_pct < 100:
+            raise ErrorDeCorredor("costo simulado inválido")
+        costo = round(precio * cantidad * self.costo_pct / 100.0, 6)
+        importe = precio * cantidad
+        tenidas = self.posiciones.get(instrumento, 0.0)
+        if signo == 1 and importe + costo > self.saldo:
+            raise ErrorDeCorredor("efectivo insuficiente; no se usa margen")
+        if signo == -1 and cantidad > tenidas:
+            raise ErrorDeCorredor("cantidad de venta superior a la posición; no se permite short")
+        # El precio es de referencia y el deslizamiento se descuenta SOLO en costos.
+        self.saldo -= signo * importe + costo
+        self.posiciones[instrumento] = tenidas + signo * cantidad
         return Ejecucion(
             instrumento=instrumento,
             cantidad=cantidad,
-            precio=round(efectivo, 6),
-            costos=round(costo, 6),
+            precio=precio,
+            costos=costo,
             identificador=f"sim-{instrumento}-{len(self._serie(instrumento))}",
         )
 
     def comprar(self, instrumento: str, cantidad: float) -> Ejecucion:
         return self._ejecutar(instrumento, cantidad, 1)
+
+    def costo_compra(self, instrumento: str, cantidad: float) -> float:
+        precio = self.precio(instrumento)
+        if precio is None or not math.isfinite(self.costo_pct) or not 0 <= self.costo_pct < 100:
+            raise ErrorDeCorredor("no se pudo estimar el costo de compra")
+        return round(precio * cantidad * self.costo_pct / 100.0, 6)
 
     def vender(self, instrumento: str, cantidad: float) -> Ejecucion:
         return self._ejecutar(instrumento, cantidad, -1)
@@ -234,9 +257,25 @@ class MotorSimulado:
     """
 
     corredor: CorredorSimulado = field(default_factory=CorredorSimulado)
+    almacen: AlmacenEstado | None = None
+    capital_inicial: float = 10_000.0
 
     def ejecutar(self, tarea: Callable[[Corredor], T]) -> T | None:
-        return tarea(self.corredor)
+        if self.almacen is None:
+            return tarea(self.corredor)
+        # El diario y los precios avanzan juntos. Tras caída/rollback, restaurar
+        # reconstruye efectivo y tenencias antes de permitir otra orden.
+        with self.almacen.transaccion_simulada():
+            saldo, posiciones, series = self.almacen.restaurar_simulacion(self.capital_inicial)
+            self.corredor.saldo = saldo
+            self.corredor.posiciones = posiciones
+            self.corredor._abierto = True
+            if series is not None:
+                self.corredor.series = series
+            resultado = tarea(self.corredor)
+            self.corredor.avanzar()
+            self.almacen.guardar_series(self.corredor.series)
+            return resultado
 
     def cerrar(self) -> None:
         self.corredor.cerrar()

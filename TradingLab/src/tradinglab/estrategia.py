@@ -233,18 +233,12 @@ POR_DEFECTO = CruceDeMedias().nombre
 def construir(nombre: str) -> tuple[Estrategia, str]:
     """Resuelve el nombre escrito en el dashboard a una estrategia concreta.
 
-    Devuelve también un aviso cuando hubo que sustituir, en vez de fallar. Un
-    nombre desconocido suele ser una errata de quien configuró, y dejar el bot
-    muerto por una errata es peor que operar la estrategia por defecto
-    diciéndolo bien claro en el panel.
+    Un nombre desconocido se rechaza: operar otra estrategia no es aplicar
+    la configuración publicada.
     """
     limpio = (nombre or "").strip()
     if not limpio:
         return DISPONIBLES[POR_DEFECTO], ""
     if limpio in DISPONIBLES:
         return DISPONIBLES[limpio], ""
-    return (
-        DISPONIBLES[POR_DEFECTO],
-        f"«{limpio}» no existe; se usa {POR_DEFECTO}. "
-        f"Disponibles: {', '.join(sorted(DISPONIBLES))}.",
-    )
+    raise ValueError(f"«{limpio}» no existe. Disponibles: {', '.join(sorted(DISPONIBLES))}.")

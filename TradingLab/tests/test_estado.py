@@ -216,6 +216,53 @@ def test_usar_el_almacen_sin_abrir_es_un_error(tmp_path: Path) -> None:
         AlmacenEstado(tmp_path / "x.db").conexion  # noqa: B018
 
 
+def test_identidad_persistida_impide_mezclar_demo_y_paper(tmp_path):
+    ruta = tmp_path / "estado.db"
+    with AlmacenEstado(ruta) as almacen:
+        almacen.vincular("simulado")
+    with AlmacenEstado(ruta) as almacen:
+        with pytest.raises(ValueError, match="otro modo"):
+            almacen.vincular("alpaca_paper")
+        almacen.vincular("simulado")
+
+
+def test_base_historica_sin_identidad_no_se_adopta(almacen):
+    almacen.registrar_apertura(Apertura("AAPL", COMPRA, 10, 100))
+    with pytest.raises(ValueError, match="sin identidad"):
+        almacen.vincular("simulado")
+    assert almacen.abiertas()[0].cantidad == 10
+
+
+def test_una_operacion_cerrada_no_se_reescribe(almacen):
+    identificador = almacen.registrar_apertura(Apertura("AAPL", COMPRA, 10, 100))
+    almacen.registrar_cierre(identificador, precio_salida=90)
+    with pytest.raises(ValueError, match="ya está cerrada"):
+        almacen.registrar_cierre(identificador, precio_salida=110)
+    assert almacen.ultimas(1)[0]["pnl_absoluto"] == -100
+
+
+@pytest.mark.parametrize("valor", [0, -1, float("nan"), float("inf")])
+def test_cantidad_invalida_no_llega_al_diario(almacen, valor):
+    with pytest.raises(ValueError, match="cantidad inválido"):
+        almacen.registrar_apertura(Apertura("AAPL", COMPRA, valor, 100))
+    assert not almacen.abiertas()
+
+
+def test_migracion_latido_antiguo_no_inventa_estado(tmp_path):
+    ruta = tmp_path / "legacy.db"
+    with sqlite3.connect(ruta) as conexion:
+        conexion.execute(
+            "CREATE TABLE estado_motor (id INTEGER PRIMARY KEY, latido_en TEXT, "
+            "detalle TEXT, posiciones_abiertas INTEGER, version TEXT)"
+        )
+        conexion.execute(
+            "INSERT INTO estado_motor VALUES (1, '2026-09-01', 'Operando', 1, 'antiguo')"
+        )
+    with AlmacenEstado(ruta) as almacen:
+        assert almacen.ultimo_latido()["estado"] is None
+        assert almacen.ultimo_latido()["config_version"] is None
+
+
 @pytest.mark.parametrize(
     ("lado", "precio", "esperado_pnl", "esperado_pct"),
     [

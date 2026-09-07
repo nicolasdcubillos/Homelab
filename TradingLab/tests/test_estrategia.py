@@ -170,17 +170,9 @@ def test_el_nombre_vacio_da_la_estrategia_por_defecto_sin_avisos() -> None:
     assert aviso == ""
 
 
-def test_un_nombre_desconocido_avisa_pero_no_mata_el_bot() -> None:
-    """Una errata al configurar no debe dejar el motor muerto.
-
-    Deja de operar sin explicación sería el peor de los dos mundos: el aviso
-    viaja hasta el detalle del latido y se ve en el panel.
-    """
-    estrategia, aviso = construir("cruze_de_meidas")
-
-    assert estrategia.nombre == POR_DEFECTO
-    assert "no existe" in aviso
-    assert POR_DEFECTO in aviso
+def test_un_nombre_desconocido_no_opera_otra_estrategia() -> None:
+    with pytest.raises(ValueError, match="no existe"):
+        construir("cruze_de_meidas")
 
 
 @pytest.mark.parametrize("nombre", sorted(DISPONIBLES))

@@ -8,12 +8,9 @@ preguntas de esa pantalla y no para el gusto interno de este proceso.
 Dos decisiones que conviene no deshacer sin leer esto:
 
 **El diario de SQLite se deja en el modo por defecto, sin WAL.** WAL sería más
-concurrente, pero un lector que abre con `mode=ro` necesita poder *escribir* el
-archivo `-shm` para acceder a una base en WAL. El dashboard abre justo así, y si
-ambos procesos no comparten usuario y permisos, fallaría con un «unable to open
-database file» dificilísimo de diagnosticar. Aquí se escribe un puñado de filas
-por hora, de modo que la concurrencia no es el problema a optimizar y el
-diario clásico elimina toda esa clase de fallo.
+concurrente, pero depende de archivos auxiliares y sus permisos. SQLite reciente
+puede leer WAL en solo lectura bajo ciertas condiciones; el diario clásico
+evita depender de ellas para esta base compartida de baja frecuencia.
 
 **Todas las marcas de tiempo son ISO-8601 en UTC con desfase explícito**
 (`+00:00`, nunca `Z`). Dos razones: el dashboard ordena las operaciones con
@@ -24,9 +21,13 @@ cronológico; y `datetime.fromisoformat` no aceptó el sufijo `Z` hasta Python
 
 from __future__ import annotations
 
+import json
+import math
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 #: Valores admitidos en `operaciones.lado`. Son los mismos que emite el
@@ -81,12 +82,23 @@ CREATE INDEX IF NOT EXISTS ix_operaciones_abiertas
 
 CREATE INDEX IF NOT EXISTS ix_operaciones_abierta_en
     ON operaciones (abierta_en DESC);
+
+CREATE TABLE IF NOT EXISTS identidad_motor (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    modo TEXT NOT NULL CHECK (modo IN ('simulado', 'alpaca_paper')),
+    capital_inicial REAL
+);
+
+CREATE TABLE IF NOT EXISTS estado_simulado (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    series_json TEXT NOT NULL
+);
 """
 
 
 def ahora_iso() -> str:
     """Marca de tiempo en el único formato que esta base admite."""
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(frozen=True)
@@ -138,6 +150,7 @@ class AlmacenEstado:
     def __init__(self, db_path: str | Path) -> None:
         self.db_path = Path(db_path)
         self._conexion: sqlite3.Connection | None = None
+        self._en_ciclo = False
 
     # ------------------------------------------------------------ ciclo de vida
 
@@ -148,6 +161,14 @@ class AlmacenEstado:
         conexion = sqlite3.connect(self.db_path, timeout=10.0)
         conexion.row_factory = sqlite3.Row
         conexion.executescript(_ESQUEMA)
+        columnas = {fila["name"] for fila in conexion.execute("PRAGMA table_info(estado_motor)")}
+        for nombre, tipo in (
+            ("estado", "TEXT"),
+            ("modo", "TEXT"),
+            ("config_version", "INTEGER"),
+        ):
+            if nombre not in columnas:
+                conexion.execute(f"ALTER TABLE estado_motor ADD COLUMN {nombre} {tipo}")
         conexion.commit()
         self._conexion = conexion
 
@@ -178,6 +199,9 @@ class AlmacenEstado:
         posiciones_abiertas: int = 0,
         version: str | None = None,
         momento: str | None = None,
+        estado: str | None = None,
+        modo: str | None = None,
+        config_version: int | None = None,
     ) -> None:
         """Deja constancia de que el proceso sigue vivo.
 
@@ -187,25 +211,118 @@ class AlmacenEstado:
         cuenta es mucho más útil que uno que desaparece en silencio.
         """
         self.conexion.execute(
-            "INSERT INTO estado_motor (id, latido_en, detalle, posiciones_abiertas, version) "
-            "VALUES (1, ?, ?, ?, ?) "
+            "INSERT INTO estado_motor "
+            "(id, latido_en, detalle, posiciones_abiertas, version, estado, modo, config_version) "
+            "VALUES (1, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET "
             "latido_en = excluded.latido_en, detalle = excluded.detalle, "
-            "posiciones_abiertas = excluded.posiciones_abiertas, version = excluded.version",
-            (momento or ahora_iso(), detalle, int(posiciones_abiertas), version),
+            "posiciones_abiertas = excluded.posiciones_abiertas, version = excluded.version, "
+            "estado = excluded.estado, modo = excluded.modo, "
+            "config_version = excluded.config_version",
+            (
+                momento or ahora_iso(),
+                detalle,
+                int(posiciones_abiertas),
+                version,
+                estado,
+                modo,
+                config_version,
+            ),
         )
-        self.conexion.commit()
+        self._confirmar()
 
     def ultimo_latido(self) -> sqlite3.Row | None:
-        return self.conexion.execute(
-            "SELECT latido_en, detalle, posiciones_abiertas, version FROM estado_motor WHERE id = 1"
+        return self.conexion.execute("SELECT * FROM estado_motor WHERE id = 1").fetchone()
+
+    def vincular(self, modo: str) -> None:
+        """Una base pertenece a un único origen; lo histórico desconocido no se adopta."""
+        if modo not in {"simulado", "alpaca_paper"}:
+            raise ValueError(f"modo inválido: {modo}")
+        with self.transaccion_simulada():
+            fila = self.conexion.execute("SELECT modo FROM identidad_motor WHERE id = 1").fetchone()
+            if fila is not None:
+                if fila["modo"] != modo:
+                    raise ValueError("La base pertenece a otro modo; utiliza una base separada.")
+                return
+            if self.conexion.execute("SELECT 1 FROM operaciones LIMIT 1").fetchone():
+                raise ValueError(
+                    "Base histórica sin identidad: requiere revisión manual; "
+                    "no se adopta ni mezcla."
+                )
+            self.conexion.execute("INSERT INTO identidad_motor (id, modo) VALUES (1, ?)", (modo,))
+
+    def restaurar_simulacion(
+        self, capital: float
+    ) -> tuple[float, dict[str, float], dict[str, list[float]] | None]:
+        fila = self.conexion.execute(
+            "SELECT modo, capital_inicial FROM identidad_motor WHERE id = 1"
         ).fetchone()
+        if fila is None or fila["modo"] != "simulado":
+            raise ValueError("La simulación requiere una base identificada como simulado.")
+        if fila["capital_inicial"] is None:
+            _validar_numero(capital, "capital inicial", positivo=True)
+            self.conexion.execute(
+                "UPDATE identidad_motor SET capital_inicial = ? WHERE id = 1", (capital,)
+            )
+        else:
+            capital = float(fila["capital_inicial"])
+        saldo = capital
+        posiciones: dict[str, float] = {}
+        for operacion in self.conexion.execute("SELECT * FROM operaciones"):
+            if operacion["lado"] != COMPRA:
+                raise ValueError("La simulación no admite posiciones cortas.")
+            if operacion["cerrada_en"] is not None:
+                saldo += float(operacion["pnl_absoluto"])
+            else:
+                cantidad = float(operacion["cantidad"])
+                posiciones[operacion["instrumento"]] = (
+                    posiciones.get(operacion["instrumento"], 0.0) + cantidad
+                )
+                saldo -= cantidad * float(operacion["precio_entrada"]) + float(operacion["costos"])
+        _validar_numero(saldo, "saldo simulado")
+        instantanea = self.conexion.execute(
+            "SELECT series_json FROM estado_simulado WHERE id = 1"
+        ).fetchone()
+        series = json.loads(instantanea["series_json"]) if instantanea is not None else None
+        self._confirmar()
+        return saldo, posiciones, series
+
+    def guardar_series(self, series: dict[str, list[float]]) -> None:
+        self.conexion.execute(
+            "INSERT INTO estado_simulado (id, series_json) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET series_json = excluded.series_json",
+            (json.dumps(series, allow_nan=False),),
+        )
+        self._confirmar()
+
+    @contextmanager
+    def transaccion_simulada(self) -> Iterator[None]:
+        """Un ciclo demo es atómico; dos supervisores no compran la misma posición."""
+        if self._en_ciclo:
+            raise RuntimeError("No se permiten ciclos anidados.")
+        self.conexion.execute("BEGIN IMMEDIATE")
+        self._en_ciclo = True
+        try:
+            yield
+            self.conexion.commit()
+        except BaseException:
+            self.conexion.rollback()
+            raise
+        finally:
+            self._en_ciclo = False
+
+    def _confirmar(self) -> None:
+        if not self._en_ciclo:
+            self.conexion.commit()
 
     # -------------------------------------------------------------- operaciones
 
     def registrar_apertura(self, apertura: Apertura, *, momento: str | None = None) -> int:
         if apertura.lado not in (COMPRA, VENTA):
             raise ValueError(f"lado inválido: {apertura.lado!r}")
+        _validar_numero(apertura.cantidad, "cantidad", positivo=True)
+        _validar_numero(apertura.precio_entrada, "precio de entrada", positivo=True)
+        _validar_numero(apertura.costos, "costos")
         cursor = self.conexion.execute(
             "INSERT INTO operaciones "
             "(instrumento, lado, cantidad, precio_entrada, costos, abierta_en, "
@@ -222,7 +339,7 @@ class AlmacenEstado:
                 apertura.trm,
             ),
         )
-        self.conexion.commit()
+        self._confirmar()
         return int(cursor.lastrowid or 0)
 
     def registrar_cierre(
@@ -242,12 +359,17 @@ class AlmacenEstado:
         restados y el porcentaje medido contra el capital que la operación
         realmente inmovilizó.
         """
+        _validar_numero(precio_salida, "precio de salida", positivo=True)
+        _validar_numero(costos_salida, "costos de salida")
         fila = self.conexion.execute(
-            "SELECT lado, cantidad, precio_entrada, costos FROM operaciones WHERE id = ?",
+            "SELECT lado, cantidad, precio_entrada, costos, cerrada_en "
+            "FROM operaciones WHERE id = ?",
             (operacion_id,),
         ).fetchone()
         if fila is None:
             raise ValueError(f"no existe la operación {operacion_id}")
+        if fila["cerrada_en"] is not None:
+            raise ValueError(f"la operación {operacion_id} ya está cerrada")
 
         signo = 1.0 if fila["lado"] == COMPRA else -1.0
         cantidad = float(fila["cantidad"])
@@ -273,7 +395,7 @@ class AlmacenEstado:
                 operacion_id,
             ),
         )
-        self.conexion.commit()
+        self._confirmar()
 
     def abiertas(self) -> list[PosicionAbierta]:
         filas = self.conexion.execute(
@@ -304,7 +426,7 @@ class AlmacenEstado:
         frenar por pérdidas no realizadas convertiría cualquier vaivén
         intradía en una parada del bot.
         """
-        prefijo = dia or datetime.now(UTC).date().isoformat()
+        prefijo = dia or datetime.now(timezone.utc).date().isoformat()
         fila = self.conexion.execute(
             "SELECT COALESCE(SUM(pnl_absoluto), 0) AS pnl FROM operaciones "
             "WHERE cerrada_en IS NOT NULL AND substr(cerrada_en, 1, 10) = ?",
@@ -316,3 +438,8 @@ class AlmacenEstado:
         return self.conexion.execute(
             "SELECT * FROM operaciones ORDER BY abierta_en DESC LIMIT ?", (limite,)
         ).fetchall()
+
+
+def _validar_numero(valor: float, nombre: str, *, positivo: bool = False) -> None:
+    if not math.isfinite(valor) or valor < 0 or (positivo and valor == 0):
+        raise ValueError(f"{nombre} inválido: {valor}")

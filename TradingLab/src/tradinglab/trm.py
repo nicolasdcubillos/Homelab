@@ -25,7 +25,7 @@ import logging
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 
 log = logging.getLogger("tradinglab.trm")
 
@@ -47,7 +47,7 @@ class ProveedorTRM:
     _fallo_del_dia: date | None = field(default=None, init=False, repr=False)
 
     def obtener(self, hoy: date | None = None) -> float | None:
-        dia = hoy or datetime.now(UTC).date()
+        dia = hoy or datetime.now(timezone.utc).date()
 
         if self._cache is not None and self._cache[0] == dia:
             return self._cache[1]

@@ -84,27 +84,19 @@ def test_los_tickers_se_normalizan(db_dashboard: Path) -> None:
     assert config.instrumentos == ("AAPL", "MSFT")
 
 
-def test_se_recorta_el_exceso_de_tickers(db_dashboard: Path) -> None:
+def test_se_rechaza_el_exceso_de_tickers(db_dashboard: Path) -> None:
     demasiados = [f"TCK{indice}" for indice in range(MAX_INSTRUMENTOS + 10)]
     escribir_config(db_dashboard, datos={**CONFIG_BASE, "instrumentos": demasiados})
 
-    config = LectorDashboard(db_dashboard).leer()
+    with pytest.raises(ErrorDeConfig, match="no se recorta"):
+        LectorDashboard(db_dashboard).leer()
 
-    assert len(config.instrumentos) == MAX_INSTRUMENTOS
 
-
-def test_un_numero_corrupto_cae_al_valor_por_defecto(db_dashboard: Path) -> None:
-    """Una fila escrita a mano no debe impedir arrancar.
-
-    El dashboard valida los rangos al guardar, así que llegar aquí con basura
-    significa que alguien tocó la base. Arrancar con el valor conservador y
-    dejarlo en el log es mejor que morir en el arranque.
-    """
+def test_un_numero_corrupto_no_se_sustituye(db_dashboard: Path) -> None:
     escribir_config(db_dashboard, datos={**CONFIG_BASE, "stop_loss_pct": "muchísimo"})
 
-    config = LectorDashboard(db_dashboard).leer()
-
-    assert config.stop_loss_pct == 5.0
+    with pytest.raises(ErrorDeConfig, match="stop_loss_pct"):
+        LectorDashboard(db_dashboard).leer()
 
 
 def test_la_lectura_no_cachea_la_conexion(db_dashboard: Path) -> None:
@@ -136,7 +128,7 @@ def test_encendido_sin_tickers_no_es_operable(db_dashboard: Path) -> None:
 
 @pytest.mark.parametrize(
     ("timeframe", "segundos"),
-    [("5m", 300), ("1h", 3_600), ("1d", 86_400), ("marciano", 3_600)],
+    [("5m", 300), ("1h", 3_600), ("1d", 86_400)],
 )
 def test_cadencia_por_marco_temporal(db_dashboard: Path, timeframe: str, segundos: int) -> None:
     escribir_config(db_dashboard, datos={**CONFIG_BASE, "timeframe": timeframe})
@@ -161,3 +153,31 @@ def test_config_json_como_objeto_nativo(db_dashboard: Path) -> None:
 
     assert config.max_posiciones_abiertas == 2
     assert config.capital_simulado == 5000.0
+
+
+@pytest.mark.parametrize(
+    ("campo", "valor"),
+    [
+        ("stop_loss_pct", float("nan")),
+        ("take_profit_pct", float("inf")),
+        ("capital_simulado", -1),
+        ("max_posiciones_abiertas", 2.7),
+        ("capital_simulado", True),
+        ("instrumentos", "AAPL"),
+        ("instrumentos", [None]),
+        ("instrumentos", ["AAPL/USDT"]),
+        ("timeframe", "marciano"),
+        ("estrategia", "desconocida"),
+        ("dry_run", False),
+    ],
+)
+def test_configuracion_invalida_se_rechaza(db_dashboard, campo, valor):
+    escribir_config(db_dashboard, datos={**CONFIG_BASE, campo: valor})
+    with pytest.raises(ErrorDeConfig):
+        LectorDashboard(db_dashboard).leer()
+
+
+def test_ruta_sqlite_con_caracteres_uri(tmp_path):
+    ruta = tmp_path / "dashboard # demo.db"
+    escribir_config(ruta)
+    assert LectorDashboard(ruta).leer().version == 1

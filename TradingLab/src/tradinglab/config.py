@@ -17,10 +17,14 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .estrategia import DISPONIBLES
 
 log = logging.getLogger("tradinglab.config")
 
@@ -131,7 +135,7 @@ class ConfigCompartida:
 
     @property
     def segundos_entre_evaluaciones(self) -> int:
-        return SEGUNDOS_POR_TIMEFRAME.get(self.timeframe, 3_600)
+        return SEGUNDOS_POR_TIMEFRAME[self.timeframe]
 
 
 def _texto(fila: sqlite3.Row, clave: str) -> str:
@@ -140,41 +144,42 @@ def _texto(fila: sqlite3.Row, clave: str) -> str:
 
 
 def _numero(datos: dict[str, Any], clave: str, conversor: Any) -> Any:
-    """Lee un número de la configuración cayendo al valor por defecto.
-
-    El dashboard ya valida los rangos al guardar, así que aquí no se revalidan:
-    lo único que se cubre es una fila escrita a mano o corrupta, donde preferimos
-    arrancar con el valor conservador antes que morir en el arranque.
-    """
-    try:
-        return conversor(datos.get(clave, VALORES_POR_DEFECTO[clave]))
-    except (TypeError, ValueError):
-        log.warning(
-            "«%s» ilegible en la configuración compartida (%r); se usa el valor por defecto %r",
-            clave,
-            datos.get(clave),
-            VALORES_POR_DEFECTO[clave],
-        )
-        return conversor(VALORES_POR_DEFECTO[clave])
+    limites = {
+        "capital_simulado": (100, 10_000_000),
+        "max_posiciones_abiertas": (1, MAX_INSTRUMENTOS),
+        "stop_loss_pct": (0.1, 90),
+        "take_profit_pct": (0.1, 500),
+        "max_perdida_diaria_pct": (0.1, 100),
+    }
+    valor = datos.get(clave, VALORES_POR_DEFECTO[clave])
+    minimo, maximo = limites[clave]
+    if (
+        type(valor) not in (int, float)
+        or (conversor is int and type(valor) is not int)
+        or not minimo <= valor <= maximo
+        or not math.isfinite(valor)
+    ):
+        raise ErrorDeConfig(f"«{clave}» inválido; debe estar entre {minimo} y {maximo}.")
+    return conversor(valor)
 
 
 def _instrumentos(datos: dict[str, Any]) -> tuple[str, ...]:
-    crudos = datos.get("instrumentos") or []
+    crudos = datos.get("instrumentos", [])
     if not isinstance(crudos, list):
-        log.warning("«instrumentos» no es una lista (%r); se ignora", crudos)
-        return ()
+        raise ErrorDeConfig("«instrumentos» no es una lista.")
     limpios: list[str] = []
     for bruto in crudos:
-        texto = str(bruto).strip().upper()
+        if not isinstance(bruto, str):
+            raise ErrorDeConfig("Cada ticker debe ser texto.")
+        texto = bruto.strip().upper()
+        if texto and not re.fullmatch(r"[A-Z][A-Z0-9.\-]{0,9}", texto):
+            raise ErrorDeConfig(f"Ticker inválido: {texto}")
         if texto and texto not in limpios:
             limpios.append(texto)
     if len(limpios) > MAX_INSTRUMENTOS:
-        log.warning(
-            "la configuración trae %d tickers y el tope es %d; se recortan los sobrantes",
-            len(limpios),
-            MAX_INSTRUMENTOS,
+        raise ErrorDeConfig(
+            f"El tope es {MAX_INSTRUMENTOS} tickers; no se recorta la configuración."
         )
-        limpios = limpios[:MAX_INSTRUMENTOS]
     return tuple(limpios)
 
 
@@ -199,7 +204,9 @@ class LectorDashboard:
                 "Revisa TRADINGLAB_DASHBOARD_DB."
             )
         try:
-            conexion = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True, timeout=5.0)
+            conexion = sqlite3.connect(
+                f"{self.db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=5.0
+            )
         except sqlite3.Error as exc:
             raise ErrorDeConfig(f"No se pudo abrir la base del dashboard: {exc}") from exc
 
@@ -238,13 +245,24 @@ class LectorDashboard:
             raise ErrorDeConfig(f"«config_json» no es JSON válido: {exc}") from exc
         if not isinstance(datos, dict):
             raise ErrorDeConfig(f"«config_json» debería ser un objeto y es {type(datos).__name__}.")
+        desconocidas = set(datos) - set(VALORES_POR_DEFECTO)
+        if desconocidas:
+            raise ErrorDeConfig(f"Campos no admitidos: {', '.join(sorted(desconocidas))}")
+        timeframe = datos.get("timeframe", VALORES_POR_DEFECTO["timeframe"])
+        if not isinstance(timeframe, str) or timeframe not in SEGUNDOS_POR_TIMEFRAME:
+            raise ErrorDeConfig("Marco temporal no admitido.")
+        estrategia = datos.get("estrategia", "")
+        if not isinstance(estrategia, str) or (estrategia and estrategia not in DISPONIBLES):
+            raise ErrorDeConfig("Estrategia no admitida; no se sustituye automáticamente.")
+        if fila["enabled"] not in (0, 1) or type(fila["version"]) is not int or fila["version"] < 1:
+            raise ErrorDeConfig("Estado habilitado o versión inválidos.")
 
         return ConfigCompartida(
             habilitado=bool(fila["enabled"]),
             version=int(fila["version"] or 0),
             instrumentos=_instrumentos(datos),
-            estrategia=str(datos.get("estrategia") or "").strip(),
-            timeframe=str(datos.get("timeframe") or VALORES_POR_DEFECTO["timeframe"]),
+            estrategia=estrategia,
+            timeframe=timeframe,
             capital_simulado=_numero(datos, "capital_simulado", float),
             max_posiciones_abiertas=_numero(datos, "max_posiciones_abiertas", int),
             stop_loss_pct=_numero(datos, "stop_loss_pct", float),

@@ -22,10 +22,12 @@ Orden de las comprobaciones, que no es casual:
 from __future__ import annotations
 
 import logging
+import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .config import ConfigCompartida
-from .corredor import Corredor, ErrorDeCorredor
+from .corredor import Corredor, Ejecucion, ErrorDeCorredor
 from .estado import COMPRA, AlmacenEstado, Apertura
 from .estrategia import Estrategia
 
@@ -66,19 +68,26 @@ class Ciclo:
     #: Tasa representativa del día, si se pudo obtener. Se anota en cada
     #: apertura; ver `trm.py` y docs/trading.md §7.
     trm: float | None = None
+    comprobar_permiso: Callable[[], None] | None = None
     incidencias: list[str] = field(default_factory=list, init=False)
+    _cerrados: set[str] = field(default_factory=set, init=False)
 
     # ------------------------------------------------------------------ público
 
     def ejecutar(self) -> Resultado:
         self.incidencias = []
+        self._cerrados = set()
         aperturas = 0
         cierres = 0
+        if not self.config.habilitado:
+            return Resultado(len(self.almacen.abiertas()), 0, 0, "En pausa", frenado=True)
+        if not self.corredor.mercado_abierto():
+            return Resultado(len(self.almacen.abiertas()), 0, 0, "Mercado cerrado", frenado=True)
 
         cierres = self._revisar_salidas()
 
         frenado, motivo_freno = self._freno_diario()
-        if not frenado:
+        if not frenado and not self.incidencias:
             aperturas = self._buscar_entradas()
 
         abiertas = len(self.almacen.abiertas())
@@ -98,6 +107,11 @@ class Ciclo:
         configurados = set(self.config.instrumentos)
 
         for posicion in self.almacen.abiertas():
+            if posicion.lado != COMPRA:
+                self._incidencia(
+                    f"{posicion.instrumento}: posición corta no soportada; requiere conciliación"
+                )
+                continue
             precio = self._precio(posicion.instrumento)
             if precio is None:
                 continue
@@ -123,11 +137,13 @@ class Ciclo:
                 continue
 
             try:
+                self._comprobar_permiso()
                 ejecucion = self.corredor.vender(posicion.instrumento, posicion.cantidad)
             except ErrorDeCorredor as exc:
                 self._incidencia(f"no se pudo cerrar {posicion.instrumento}: {exc}")
                 continue
 
+            self._validar_ejecucion(ejecucion, posicion.instrumento, posicion.cantidad)
             self.almacen.registrar_cierre(
                 posicion.id,
                 precio_salida=ejecucion.precio,
@@ -136,6 +152,7 @@ class Ciclo:
                 orden_salida=ejecucion.identificador,
             )
             cerradas += 1
+            self._cerrados.add(posicion.instrumento)
             log.info(
                 "cerrada %s x%s a %s (%s)",
                 posicion.instrumento,
@@ -177,12 +194,15 @@ class Ciclo:
 
         ya_dentro = {posicion.instrumento for posicion in abiertas}
         asignado = self._capital_por_posicion()
+        comprometido = sum(p.cantidad * p.precio_entrada + p.costos for p in abiertas)
+        presupuesto = max(0.0, self.config.capital_simulado - comprometido)
+        efectivo_restante = math.inf
         nuevas = 0
 
         for instrumento in self.config.instrumentos:
             if cupo <= 0:
                 break
-            if instrumento in ya_dentro:
+            if instrumento in ya_dentro or instrumento in self._cerrados:
                 continue
 
             senal = self._evaluar(instrumento, con_posicion=False)
@@ -196,20 +216,38 @@ class Ciclo:
             # Acciones enteras. Alpaca admite fraccionarias, pero solo en
             # algunos tickers y con reglas propias; redondear hacia abajo es
             # aburrido, funciona siempre y hace la contabilidad exacta.
-            cantidad = float(int(asignado // precio))
+            try:
+                efectivo = self.corredor.efectivo()
+                if not math.isfinite(efectivo) or efectivo < 0:
+                    raise ErrorDeCorredor("efectivo inválido")
+                costo_unitario = self.corredor.costo_compra(instrumento, 1)
+                if not math.isfinite(costo_unitario) or costo_unitario < 0:
+                    raise ErrorDeCorredor("costo de compra inválido")
+            except ErrorDeCorredor as exc:
+                self._incidencia(f"no se pudo conocer el efectivo: {exc}")
+                break
+            efectivo_restante = min(efectivo_restante, efectivo)
+            disponible = min(asignado, presupuesto, efectivo_restante)
+            cantidad = float(int(disponible // (precio + costo_unitario)))
+            if cantidad > 0 and (
+                cantidad * precio + self.corredor.costo_compra(instrumento, cantidad) > disponible
+            ):
+                cantidad -= 1
             if cantidad < 1:
                 self._incidencia(
-                    f"{instrumento} cuesta {precio:,.2f} y solo hay {asignado:,.2f} "
+                    f"{instrumento} cuesta {precio:,.2f} y solo hay {disponible:,.2f} "
                     "por posición: no alcanza para una acción."
                 )
                 continue
 
             try:
+                self._comprobar_permiso()
                 ejecucion = self.corredor.comprar(instrumento, cantidad)
             except ErrorDeCorredor as exc:
                 self._incidencia(f"no se pudo abrir {instrumento}: {exc}")
                 continue
 
+            self._validar_ejecucion(ejecucion, instrumento, cantidad)
             self.almacen.registrar_apertura(
                 Apertura(
                     instrumento=instrumento,
@@ -223,6 +261,9 @@ class Ciclo:
             )
             nuevas += 1
             cupo -= 1
+            ya_dentro.add(instrumento)
+            presupuesto -= ejecucion.cantidad * ejecucion.precio + ejecucion.costos
+            efectivo_restante -= ejecucion.cantidad * ejecucion.precio + ejecucion.costos
             log.info(
                 "abierta %s x%s a %s (%s)",
                 instrumento,
@@ -250,10 +291,29 @@ class Ciclo:
 
     def _precio(self, instrumento: str) -> float | None:
         try:
-            return self.corredor.precio(instrumento)
+            precio = self.corredor.precio(instrumento)
+            if precio is None or not math.isfinite(precio) or precio <= 0:
+                raise ErrorDeCorredor("precio ausente o inválido")
+            return precio
         except ErrorDeCorredor as exc:
             self._incidencia(f"sin precio de {instrumento}: {exc}")
             return None
+
+    def _comprobar_permiso(self) -> None:
+        if self.comprobar_permiso is not None:
+            self.comprobar_permiso()
+
+    @staticmethod
+    def _validar_ejecucion(ejecucion: Ejecucion, instrumento: str, cantidad: float) -> None:
+        if (
+            ejecucion.instrumento != instrumento
+            or ejecucion.cantidad != cantidad
+            or not math.isfinite(ejecucion.precio)
+            or ejecucion.precio <= 0
+            or not math.isfinite(ejecucion.costos)
+            or ejecucion.costos < 0
+        ):
+            raise ValueError("Ejecución no conciliada: no se registra como una orden completa.")
 
     def _incidencia(self, texto: str) -> None:
         log.warning("%s", texto)
