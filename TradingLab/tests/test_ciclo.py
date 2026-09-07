@@ -603,7 +603,8 @@ def test_fallar_primera_instantanea_revierte_tambien_los_precios(almacen):
     almacen.conexion.set_authorizer(denegar_instantanea)
     with pytest.raises(sqlite3.DatabaseError):
         motor.ejecutar(lambda corredor: None)
-    almacen.conexion.set_authorizer(None)
+    # SQLite acepta None para desactivar el callback solo desde Python 3.11.
+    almacen.conexion.set_authorizer(lambda *_: sqlite3.SQLITE_OK)
     assert motor.corredor.series == {"AAPL": [100.0]}
     motor.ejecutar(
         lambda corredor: _ciclo(
