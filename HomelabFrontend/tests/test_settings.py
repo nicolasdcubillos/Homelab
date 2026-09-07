@@ -77,6 +77,43 @@ def test_entero_fuera_de_rango_falla(monkeypatch):
         load_settings()
 
 
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("ENABLED", "quizas"),
+        ("DELIVERIES_ENABLED", "habilitado"),
+        ("WHATSAPP_TEMPLATE_APPROVED", "aprobado"),
+        ("TIMEOUT", "mucho"),
+        ("TIMEOUT", "nan"),
+        ("TIMEOUT", "inf"),
+        ("TIMEOUT", "0"),
+        ("TIMEOUT", "121"),
+        ("DISK_MIN_FREE_MB", "0.5"),
+        ("DISK_MIN_FREE_MB", "-1"),
+        ("DISK_MIN_FREE_MB", "1000001"),
+    ],
+)
+def test_regimen_rechaza_configuracion_invalida(monkeypatch, name, value):
+    key = "DASHBOARD_REGIME_" + name
+    monkeypatch.setenv(key, value)
+    with pytest.raises(ValueError, match=key):
+        load_settings()
+
+
+def test_regimen_reutiliza_booleanos_y_normalizacion_del_dashboard(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_REGIME_ENABLED", "on")
+    monkeypatch.setenv("DASHBOARD_REGIME_DELIVERIES_ENABLED", "off")
+    monkeypatch.setenv("DASHBOARD_REGIME_DISK_MIN_FREE_MB", "")
+    monkeypatch.setenv("DASHBOARD_REGIME_TIMEOUT", "")
+    monkeypatch.setenv("DASHBOARD_REGIME_FRED_KEY", "   ")
+    regime = load_settings().regime
+    assert regime.enabled is True
+    assert regime.deliveries_enabled is False
+    assert regime.disk_min_free_mb == 1024
+    assert regime.timeout == 20
+    assert regime.fred_key == ""
+
+
 def test_ensure_directories_restringe_permisos_de_usuarios(tmp_path):
     settings = load_settings(
         data_dir=tmp_path / "datos",

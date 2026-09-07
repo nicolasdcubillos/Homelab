@@ -125,6 +125,7 @@ class UsuarioOut(EsquemaORM):
     #: la sesión para que la navegación sepa si ofrecer la sección sin tener
     #: que pedir una ruta que le respondería 404.
     trading_level: Literal["viewer", "operator"] | None = None
+    regime_level: Literal["viewer", "operator"] | None = None
 
 
 class SesionOut(Esquema):

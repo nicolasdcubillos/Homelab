@@ -4,85 +4,37 @@ on:
   push:
     branches: [main]
     paths:
-      - 'HomelabFrontend/**'
-      - '.github/workflows/deploy-homelabfrontend.yml'
-  workflow_dispatch: {}
+      - "HomelabFrontend/**"
+      - ".github/workflows/deploy-homelabfrontend.yml"
+  workflow_dispatch:
+    inputs:
+      recover:
+        description: Recuperar un despliegue fallido con el servicio detenido
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-homelabfrontend
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, homelab-vm]
+    timeout-minutes: 20
     steps:
-      - name: Pull latest and reinstall
-        run: |
-          set -e
-          cd /opt/services/homelab
-          sudo -u azureuser git fetch origin main
-          sudo -u azureuser git reset --hard origin/main
-          cd HomelabFrontend
-          sudo -u azureuser bash -c '.venv/bin/pip install -q -U pip && .venv/bin/pip install -q -e .'
+      - name: Checkout exact revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
-      # El dashboard dejó de servir plantillas Jinja: ahora sirve un SPA de
-      # React compilado. `frontend/dist` no se versiona (es un artefacto de
-      # build), así que hay que generarlo en la VM en cada deploy que toque el
-      # frontend. `npm ci` respeta package-lock.json, así que es reproducible.
-      - name: Build frontend (SPA)
+      - name: Deploy isolated dashboard with database backup
+        env:
+          RECOVER_DEPLOYMENT: ${{ inputs.recover && 'true' || 'false' }}
         run: |
-          set -e
-          cd /opt/services/homelab/HomelabFrontend/frontend
-          sudo -u azureuser npm ci --no-audit --no-fund
-          sudo -u azureuser npm run build
-          test -f dist/index.html
-
-      # El unit vive en el repo para que el despliegue sea reproducible: las
-      # variables nuevas (DASHBOARD_DATA_DIR, DASHBOARD_FRONTEND_DIST) y el
-      # ExecStartPre de las migraciones llegan solos, sin editar la VM a mano.
-      - name: Install systemd unit
-        run: |
-          set -e
-          sudo install -m 0644 \
-            /opt/services/homelab/HomelabFrontend/systemd/homelab-dashboard.service \
-            /etc/systemd/system/homelab-dashboard.service
-          sudo systemctl daemon-reload
-
-      # Mismo motivo que el unit: el Caddyfile es fuente de verdad en el repo.
-      # Es imprescindible que llegue solo, porque el que había en la VM tenía
-      # basic_auth y devolvía 401 a todo — incluida la propia SPA y sus
-      # llamadas a /api/*. `caddy validate` antes de recargar evita dejar el
-      # sitio caído si el archivo tiene un error de sintaxis.
-      - name: Install Caddyfile
-        run: |
-          set -e
-          sudo install -m 0644 \
-            /opt/services/homelab/HomelabFrontend/Caddyfile \
-            /etc/caddy/Caddyfile
-          sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-          sudo systemctl reload caddy
-
-      - name: Restart dashboard service
-        run: |
-          set -e
-          sudo systemctl restart homelab-dashboard.service
-          sleep 5
-          systemctl is-active homelab-dashboard.service
-          # La raíz devuelve el SPA; /api/v1/auth/me debe responder 401 sin
-          # sesión (no 200): prueba de que no hay acceso anónimo a datos.
-          curl -s -o /dev/null -w "GET /             -> %{http_code}\n" http://127.0.0.1:8000/
-          code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/v1/auth/me)
-          echo "GET /api/v1/auth/me -> $code"
-          test "$code" = "401"
-
-      # Comprobar solo 127.0.0.1 no basta: la primera vez que se desplegó esto,
-      # el servicio respondía 200 en local mientras el sitio público devolvía
-      # 401 a todo, porque Caddy conservaba el basic_auth anterior. La prueba
-      # tiene que pasar por el mismo camino que usa un navegador: TLS + proxy.
-      - name: Verify public HTTPS entrypoint
-        run: |
-          set -e
-          host=$(awk '/cloudapp.azure.com \{/ {print $1}' /opt/services/homelab/HomelabFrontend/Caddyfile)
-          echo "dominio: $host"
-          root=$(curl -s -o /dev/null -w "%{http_code}" "https://$host/")
-          api=$(curl -s -o /dev/null -w "%{http_code}" "https://$host/api/v1/auth/me")
-          echo "GET https://$host/               -> $root  (200 esperado: el SPA)"
-          echo "GET https://$host/api/v1/auth/me -> $api  (401 esperado: sin sesión)"
-          test "$root" = "200"
-          test "$api" = "401"
+          args=("$GITHUB_SHA")
+          if [ "$RECOVER_DEPLOYMENT" = true ]; then args+=(--recover); fi
+          sudo bash HomelabFrontend/scripts/deploy-market-regime.sh "${args[@]}"

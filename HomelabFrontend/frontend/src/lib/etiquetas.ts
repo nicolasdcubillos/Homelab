@@ -116,3 +116,22 @@ export function etiqueta<T extends string>(
   if (!clave) return respaldo;
   return mapa[clave] ?? clave;
 }
+export const NIVEL_REGIMEN = { viewer: "Lector", operator: "Operador" } as const;
+export const HORIZONTES_REGIMEN = {
+  SHORT: "Corto plazo", MEDIUM: "Mediano plazo", LONG: "Largo plazo",
+} as const;
+export const ESTADO_DATOS_REGIMEN = {
+  SIN_DATOS: "Sin datos", INCOMPLETO: "Incompleto", COMPLETO: "Completo",
+} as const;
+export const CLASIFICACION_REGIMEN = {
+  RISK_ON: "Favorable al riesgo", RISK_OFF: "Adverso al riesgo", NEUTRAL: "Neutral",
+} as const;
+export const CATEGORIAS_REGIMEN: Record<string, string> = {
+  MACRO: "Macro y política", RATES: "Tasas", FX: "Divisas",
+  VOLATILITY: "Volatilidad", CREDIT: "Crédito", EQUITY: "Renta variable",
+  CROSS_ASSET: "Confirmación entre activos",
+};
+export const ESTADO_FUENTE_REGIMEN = {
+  DISPONIBLE: "Disponible", NO_CONFIGURADO: "No configurado",
+  BLOQUEADO_LICENCIA: "Bloqueado por licencia", ERROR: "Error", PENDIENTE: "Pendiente",
+} as const;

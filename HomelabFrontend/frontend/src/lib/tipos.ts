@@ -99,3 +99,28 @@ export type ModoTrading = "paper";
 // traduce: Freqtrade dice `is_short` y TradingLab escribe la palabra directa.
 // La UI recibe un solo vocabulario, no el del motor que tocó responder.
 export type LadoOperacion = "compra" | "venta";
+
+/* Régimen de mercado ------------------------------------------------------- */
+export type NivelRegimen = S["AccessIn"]["level"];
+export type HorizonteRegimen = S["HorizonResult"]["horizon"];
+export type ResultadoHorizonte = S["HorizonResult"];
+export type ResumenRegimen = S["OverviewOut"];
+export type FuenteRegimen = S["SourceInfo"];
+export type FuentesRegimen = S["SourcesOut"];
+export type CoberturaRegimen = S["CoverageOut"];
+export type EvidenciaRegimen = S["Evidence"];
+export type DatosSnapshotRegimen = S["SnapshotData"];
+export type SnapshotRegimen = S["SnapshotOut"];
+export type HistoriaRegimen = S["HistoryOut"];
+export type ConfigRegimen = S["ConfigOut"];
+export type ConfigRegimenEntrada = S["ConfigIn"];
+export type EjecucionRegimen = S["RunOut"];
+export type EjecucionRegimenEntrada = S["RunIn"];
+export type EjecucionesRegimen = S["RunsOut"];
+export type InformeRegimen = S["ReportOut"];
+export type InformesRegimen = S["ReportsOut"];
+export type SuscripcionRegimen = S["SubscriptionOut"];
+export type SuscripcionRegimenEntrada = S["SubscriptionIn"];
+export type EntregasRegimen = S["DeliveriesOut"];
+export type AccesosRegimen = S["AccessesOut"];
+export type AccesoRegimen = S["AccessOut"];

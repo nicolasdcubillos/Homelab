@@ -286,9 +286,7 @@ def acceso_trading(usuario: UsuarioOperativoDep) -> ContextoTrading | None:
     nivel = usuario.trading_level
     if nivel is None:
         return None
-    return ContextoTrading(
-        usuario=usuario, nivel=nivel, por_admin=usuario.role == ROLE_ADMIN
-    )
+    return ContextoTrading(usuario=usuario, nivel=nivel, por_admin=usuario.role == ROLE_ADMIN)
 
 
 AccesoTradingDep = Annotated[ContextoTrading | None, Depends(acceso_trading)]
@@ -325,3 +323,24 @@ def operador_trading(acceso: TradingLectorDep) -> ContextoTrading:
 
 
 TradingOperadorDep = Annotated[ContextoTrading, Depends(operador_trading)]
+
+
+def lector_regimen(usuario: UsuarioOperativoDep) -> User:
+    if usuario.regime_level is None:
+        raise ApiError(404, "no_encontrado", "No se encontro el recurso.")
+    return usuario
+
+
+RegimeLectorDep = Annotated[User, Depends(lector_regimen)]
+
+
+def operador_regimen(usuario: RegimeLectorDep) -> User:
+    if usuario.regime_level != "operator":
+        raise prohibido(
+            "Tienes acceso de solo lectura al regimen de mercado.",
+            code="regime_solo_lectura",
+        )
+    return usuario
+
+
+RegimeOperadorDep = Annotated[User, Depends(operador_regimen)]

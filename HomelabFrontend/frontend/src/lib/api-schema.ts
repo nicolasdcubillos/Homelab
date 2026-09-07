@@ -311,6 +311,281 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/market-regime/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Access List */
+        get: operations["access_list_api_v1_market_regime_access_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/access/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Grant */
+        put: operations["grant_api_v1_market_regime_access__user_id__put"];
+        post?: never;
+        /** Revoke */
+        delete: operations["revoke_api_v1_market_regime_access__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Config */
+        get: operations["config_api_v1_market_regime_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change Config */
+        patch: operations["change_config_api_v1_market_regime_config_patch"];
+        trace?: never;
+    };
+    "/api/v1/market-regime/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Coverage */
+        get: operations["coverage_api_v1_market_regime_coverage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** History */
+        get: operations["history_api_v1_market_regime_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/me/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deliveries */
+        get: operations["deliveries_api_v1_market_regime_me_deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/me/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Subscription */
+        get: operations["subscription_api_v1_market_regime_me_subscription_get"];
+        /** Update Subscription */
+        put: operations["update_subscription_api_v1_market_regime_me_subscription_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operations */
+        get: operations["operations_api_v1_market_regime_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview */
+        get: operations["overview_api_v1_market_regime_overview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reports */
+        get: operations["reports_api_v1_market_regime_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report */
+        get: operations["report_api_v1_market_regime_reports__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/reports/{report_id}/html": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report Html */
+        get: operations["report_html_api_v1_market_regime_reports__report_id__html_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Run */
+        post: operations["create_run_api_v1_market_regime_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run */
+        get: operations["run_api_v1_market_regime_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/snapshots/{snapshot_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Snapshot */
+        get: operations["snapshot_api_v1_market_regime_snapshots__snapshot_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/market-regime/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sources */
+        get: operations["sources_api_v1_market_regime_sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/apps": {
         parameters: {
             query?: never;
@@ -937,6 +1212,29 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /** AccessesOut */
+        AccessesOut: {
+            /** Items */
+            items: components["schemas"]["AccessOut"][];
+        };
+        /** AccessIn */
+        AccessIn: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "viewer" | "operator";
+        };
+        /** AccessOut */
+        AccessOut: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "viewer" | "operator";
+            /** User Id */
+            user_id: string;
+        };
         /** AppOut */
         AppOut: {
             /** App Name */
@@ -1020,12 +1318,54 @@ export interface components {
             /** Destination */
             destination: string;
         };
+        /** CategoryResult */
+        CategoryResult: {
+            /** Category */
+            category: string;
+            /** Contribution */
+            contribution?: number | null;
+            /** Evidence */
+            evidence?: components["schemas"]["Evidence"][];
+            /** Reason */
+            reason: string;
+            /** Value */
+            value?: number | null;
+            /** Weight */
+            weight: number;
+        };
         /** ComandoOut */
         ComandoOut: {
             /** Key */
             key: string;
             /** Label */
             label: string;
+        };
+        /** ConfigIn */
+        ConfigIn: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Enabled */
+            enabled: boolean;
+            /** Version */
+            version: number;
+        };
+        /** ConfigOut */
+        ConfigOut: {
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: number;
         };
         /**
          * ConfigTradingIn
@@ -1086,10 +1426,75 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** CoverageItem */
+        CoverageItem: {
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /** Ingested At */
+            ingested_at?: string | null;
+            /** Name */
+            name: string;
+            /** Observed At */
+            observed_at?: string | null;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Series Id */
+            series_id: string;
+            /** Source Id */
+            source_id: string;
+            /**
+             * Source Url
+             * @default
+             */
+            source_url: string;
+        };
+        /** CoverageOut */
+        CoverageOut: {
+            /** Items */
+            items: components["schemas"]["CoverageItem"][];
+        };
         /** CsrfOut */
         CsrfOut: {
             /** Csrf Token */
             csrf_token: string;
+        };
+        /** DeliveriesOut */
+        DeliveriesOut: {
+            /** Items */
+            items: components["schemas"]["DeliveryOut"][];
+        };
+        /** DeliveryOut */
+        DeliveryOut: {
+            /** Attempts */
+            attempts: number;
+            /** Channel */
+            channel: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Detail */
+            detail: string;
+            /** Id */
+            id: string;
+            /** Report Id */
+            report_id: string;
+            /** Status */
+            status: string;
         };
         /** EjecucionAdminOut */
         EjecucionAdminOut: {
@@ -1213,6 +1618,56 @@ export interface components {
             /** Nombre */
             nombre: string;
         };
+        /** Evidence */
+        Evidence: {
+            /** Available At */
+            available_at?: string | null;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "FAVORABLE" | "ADVERSA" | "MIXTA" | "NO_EVALUABLE";
+            /** Observation Ids */
+            observation_ids?: number[];
+            /** Observed At */
+            observed_at?: string | null;
+            /** Reading */
+            reading: string;
+            /** Series Id */
+            series_id: string;
+            /**
+             * Source Url
+             * @default
+             */
+            source_url: string;
+            /**
+             * Unit
+             * @default
+             */
+            unit: string;
+            /** Value */
+            value?: number | null;
+        };
+        /** HistoryOut */
+        HistoryOut: {
+            /** First Available At */
+            first_available_at: string | null;
+            /** Items */
+            items: components["schemas"]["SnapshotOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /**
+             * Requested From
+             * Format: date-time
+             */
+            requested_from: string;
+            /** Total */
+            total: number;
+            /** Unavailable Before First */
+            unavailable_before_first: boolean;
+        };
         /**
          * HitDetalleOut
          * @description Un hallazgo nuevo de StockWatcher, tal como lo publica ``hit_detail``.
@@ -1271,6 +1726,55 @@ export interface components {
             sector_hint: string;
             /** Ticker */
             ticker: string;
+        };
+        /** HorizonResult */
+        HorizonResult: {
+            /**
+             * Calibration Status
+             * @default HEURISTICO_NO_VALIDADO
+             * @constant
+             */
+            calibration_status: "HEURISTICO_NO_VALIDADO";
+            /** Categories */
+            categories?: components["schemas"]["CategoryResult"][];
+            /** Changes */
+            changes?: string[];
+            /**
+             * Confidence
+             * @default NO_EVALUABLE
+             * @enum {string}
+             */
+            confidence: "BAJA" | "MEDIA" | "ALTA" | "NO_EVALUABLE";
+            /** Contradictions */
+            contradictions?: string[];
+            /**
+             * Data Status
+             * @enum {string}
+             */
+            data_status: "SIN_DATOS" | "INCOMPLETO" | "COMPLETO";
+            /** Drivers */
+            drivers?: string[];
+            /**
+             * Horizon
+             * @enum {string}
+             */
+            horizon: "SHORT" | "MEDIUM" | "LONG";
+            /** Missing */
+            missing?: string[];
+            /** Previous Regime */
+            previous_regime?: ("RISK_ON" | "RISK_OFF" | "NEUTRAL") | null;
+            /** Regime */
+            regime?: ("RISK_ON" | "RISK_OFF" | "NEUTRAL") | null;
+            /** Score */
+            score?: number | null;
+            /**
+             * Transition Status
+             * @default NO_EVALUABLE
+             * @enum {string}
+             */
+            transition_status: "ESTABLE" | "EN_TRANSICION" | "NO_EVALUABLE";
+            /** Would Change */
+            would_change?: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1415,6 +1919,46 @@ export interface components {
             /** Whatsapp */
             whatsapp?: string | null;
         };
+        /** OfficialEvent */
+        OfficialEvent: {
+            /**
+             * Available At
+             * Format: date-time
+             */
+            available_at: string;
+            /**
+             * Event At
+             * Format: date-time
+             */
+            event_at: string;
+            /** Event Id */
+            event_id: string;
+            /**
+             * Kind
+             * @default release
+             * @enum {string}
+             */
+            kind: "release" | "meeting" | "minutes" | "projection";
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Scheduled
+             * @default false
+             */
+            scheduled: boolean;
+            /** Source Id */
+            source_id: string;
+            /** Source Url */
+            source_url: string;
+            /**
+             * Timestamp Precision
+             * @default date
+             * @enum {string}
+             */
+            timestamp_precision: "exact" | "date" | "observed";
+            /** Title */
+            title: string;
+        };
         /** OkOut */
         OkOut: {
             /**
@@ -1460,6 +2004,31 @@ export interface components {
             precio_entrada: number;
             /** Precio Salida */
             precio_salida: number | null;
+        };
+        /** OverviewOut */
+        OverviewOut: {
+            /** Calendar Status */
+            calendar_status: string;
+            /** Coverage */
+            coverage: components["schemas"]["CoverageItem"][];
+            /** Deliveries Enabled */
+            deliveries_enabled: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Engine Enabled */
+            engine_enabled: boolean;
+            /** First Snapshot At */
+            first_snapshot_at?: string | null;
+            /** Next Report At */
+            next_report_at?: string | null;
+            snapshot?: components["schemas"]["SnapshotData"] | null;
+            /** Snapshot Id */
+            snapshot_id?: string | null;
+            /**
+             * Warning
+             * @default Score heuristico no validado; no es probabilidad de ganancias.
+             */
+            warning: string;
         };
         /**
          * PasswordAdminIn
@@ -1693,6 +2262,66 @@ export interface components {
             /** Ids */
             ids: string[];
         };
+        /** ReportData */
+        ReportData: {
+            /** Brief */
+            brief: string;
+            /** Html */
+            html: string;
+            /** Matrix */
+            matrix: components["schemas"]["Evidence"][];
+            /**
+             * Narrative Status
+             * @default DESHABILITADO
+             * @enum {string}
+             */
+            narrative_status: "DESHABILITADO" | "ERROR" | "COMPLETO";
+            /** Sections */
+            sections: components["schemas"]["ReportSection"][];
+            /** Snapshot Ids */
+            snapshot_ids?: string[];
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /** ReportOut */
+        ReportOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            data: components["schemas"]["ReportData"];
+            /** Id */
+            id: string;
+            /** Sha256 */
+            sha256: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Week Key */
+            week_key: string;
+        };
+        /** ReportSection */
+        ReportSection: {
+            /** Number */
+            number: number;
+            /** Text */
+            text: string;
+            /** Title */
+            title: string;
+        };
+        /** ReportsOut */
+        ReportsOut: {
+            /** Items */
+            items: components["schemas"]["ReportOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
         /**
          * ResultadoOut
          * @description Subconjunto de ``RunSummary.as_dict()`` que vale la pena mostrar en la
@@ -1721,6 +2350,44 @@ export interface components {
              */
             stores_scanned: number;
         };
+        /** RunIn */
+        RunIn: {
+            /**
+             * Kind
+             * @default ingest
+             * @enum {string}
+             */
+            kind: "ingest" | "snapshot" | "report";
+        };
+        /** RunOut */
+        RunOut: {
+            /** Detail */
+            detail: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            };
+            /** Started At */
+            started_at: string | null;
+            /** Status */
+            status: string;
+        };
+        /** RunsOut */
+        RunsOut: {
+            /** Items */
+            items: components["schemas"]["RunOut"][];
+        };
         /**
          * SesionOut
          * @description Respuesta de `/auth/me` y del login.
@@ -1729,6 +2396,140 @@ export interface components {
             /** Csrf Token */
             csrf_token: string;
             user: components["schemas"]["UsuarioOut"];
+        };
+        /** SnapshotData */
+        SnapshotData: {
+            /**
+             * As Of
+             * Format: date-time
+             */
+            as_of: string;
+            /** Context */
+            context: string;
+            /** Coverage */
+            coverage: components["schemas"]["CoverageItem"][];
+            /** Events */
+            events?: components["schemas"]["OfficialEvent"][];
+            /** Horizons */
+            horizons: components["schemas"]["HorizonResult"][];
+            /**
+             * Mode
+             * @default OPERACIONAL
+             * @enum {string}
+             */
+            mode: "OPERACIONAL" | "RECONSTRUCCION";
+            /** Model Version */
+            model_version: string;
+        };
+        /** SnapshotOut */
+        SnapshotOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            data: components["schemas"]["SnapshotData"];
+            /** Id */
+            id: string;
+            /** Sha256 */
+            sha256: string;
+        };
+        /** SourceInfo */
+        SourceInfo: {
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Id */
+            id: string;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Requires Key
+             * @default false
+             */
+            requires_key: boolean;
+            /**
+             * Restricted
+             * @default false
+             */
+            restricted: boolean;
+            /** Series */
+            series?: string[];
+            /**
+             * Status
+             * @default PENDIENTE
+             * @enum {string}
+             */
+            status: "DISPONIBLE" | "NO_CONFIGURADO" | "BLOQUEADO_LICENCIA" | "ERROR" | "PENDIENTE";
+            /** Terms Url */
+            terms_url: string;
+            /** Url */
+            url: string;
+        };
+        /** SourcesOut */
+        SourcesOut: {
+            /** Items */
+            items: components["schemas"]["SourceInfo"][];
+        };
+        /** SubscriptionIn */
+        SubscriptionIn: {
+            /**
+             * Accept Consent
+             * @default false
+             */
+            accept_consent: boolean;
+            /**
+             * Email
+             * @default false
+             */
+            email: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Horizons */
+            horizons?: ("SHORT" | "MEDIUM" | "LONG")[];
+            /**
+             * Whatsapp
+             * @default false
+             */
+            whatsapp: boolean;
+        };
+        /** SubscriptionOut */
+        SubscriptionOut: {
+            /**
+             * Consent Version
+             * @default market-regime-v1
+             */
+            consent_version: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail: string;
+            /** Email */
+            email: boolean;
+            /**
+             * Email Ready
+             * @default false
+             */
+            email_ready: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Horizons */
+            horizons: ("SHORT" | "MEDIUM" | "LONG")[];
+            /** Whatsapp */
+            whatsapp: boolean;
+            /**
+             * Whatsapp Ready
+             * @default false
+             */
+            whatsapp_ready: boolean;
         };
         /** UsuarioAdminOut */
         UsuarioAdminOut: {
@@ -1792,6 +2593,8 @@ export interface components {
             last_login_at: string | null;
             /** Must Change Password */
             must_change_password: boolean;
+            /** Regime Level */
+            regime_level?: ("viewer" | "operator") | null;
             /** Role */
             role: string;
             /** Status */
@@ -2460,6 +3263,518 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    access_list_api_v1_market_regime_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessesOut"];
+                };
+            };
+        };
+    };
+    grant_api_v1_market_regime_access__user_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_api_v1_market_regime_access__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    config_api_v1_market_regime_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"];
+                };
+            };
+        };
+    };
+    change_config_api_v1_market_regime_config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    coverage_api_v1_market_regime_coverage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoverageOut"];
+                };
+            };
+        };
+    };
+    history_api_v1_market_regime_history_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                range?: "1w" | "1m" | "3m" | "6m" | "12m";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deliveries_api_v1_market_regime_me_deliveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeliveriesOut"];
+                };
+            };
+        };
+    };
+    subscription_api_v1_market_regime_me_subscription_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionOut"];
+                };
+            };
+        };
+    };
+    update_subscription_api_v1_market_regime_me_subscription_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscriptionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubscriptionOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operations_api_v1_market_regime_operations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunsOut"];
+                };
+            };
+        };
+    };
+    overview_api_v1_market_regime_overview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewOut"];
+                };
+            };
+        };
+    };
+    reports_api_v1_market_regime_reports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_api_v1_market_regime_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_html_api_v1_market_regime_reports__report_id__html_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_run_api_v1_market_regime_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_api_v1_market_regime_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    snapshot_api_v1_market_regime_snapshots__snapshot_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                snapshot_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sources_api_v1_market_regime_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourcesOut"];
                 };
             };
         };

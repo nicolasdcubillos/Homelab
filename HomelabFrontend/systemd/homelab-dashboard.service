@@ -30,11 +30,12 @@ Environment=DASHBOARD_APPS_FILE=/opt/services/homelab/HomelabFrontend/apps.yaml
 Environment=DASHBOARD_DB_FILE=/opt/services/homelab/HomelabFrontend/dashboard.db
 Environment=DASHBOARD_DATA_DIR=/opt/services/homelab/HomelabFrontend/data
 Environment=DASHBOARD_LOGS_DIR=/opt/services/homelab/HomelabFrontend/logs
-Environment=DASHBOARD_FRONTEND_DIST=/opt/services/homelab/HomelabFrontend/frontend/dist
+Environment=DASHBOARD_FRONTEND_DIST=/opt/services/homelab-dashboard/current/frontend/dist
 Environment=DASHBOARD_SECURE_COOKIES=true
 Environment=DASHBOARD_SCHEDULER_ENABLED=true
-ExecStartPre=/opt/services/homelab/HomelabFrontend/.venv/bin/homelab-dashboard migrate
-ExecStart=/opt/services/homelab/HomelabFrontend/.venv/bin/homelab-dashboard serve
+EnvironmentFile=-/etc/homelab/market-regime.env
+ExecStartPre=/opt/services/homelab-dashboard/current/.venv/bin/homelab-dashboard migrate
+ExecStart=/opt/services/homelab-dashboard/current/.venv/bin/homelab-dashboard serve
 Restart=on-failure
 RestartSec=5
 # Corre como root porque el dashboard lanza subprocess bajo /opt/services/<app>/

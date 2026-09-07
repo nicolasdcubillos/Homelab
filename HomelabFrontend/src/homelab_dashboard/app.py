@@ -23,6 +23,8 @@ from .api import api_router
 from .api.errors import registrar_manejadores
 from .db import create_db_engine, make_session_factory
 from .jobs import JobManager
+from .market_regime.dispatcher import RegimeDispatcher
+from .market_regime.service import execute_run
 from .migrate import upgrade_to_head
 from .registry import RegistryError, load_registry
 from .runner import JobRunner
@@ -98,8 +100,27 @@ def create_app(
     app.state.runner = JobRunner(settings, app.state.session_factory)
     _refrescar_apps_del_runner(app)
     app.state.runner.reconciliar_huerfanos()
+    app.state.regime_dispatcher = (
+        RegimeDispatcher(
+            settings,
+            app.state.session_factory,
+            execute=lambda run_id, attempt: execute_run(
+                app.state.session_factory,
+                settings,
+                run_id,
+                attempt=attempt,
+            ),
+        )
+        if settings.scheduler_enabled
+        else None
+    )
     app.state.scheduler = (
-        Scheduler(settings, app.state.session_factory, app.state.runner)
+        Scheduler(
+            settings,
+            app.state.session_factory,
+            app.state.runner,
+            regime_dispatcher=app.state.regime_dispatcher,
+        )
         if settings.scheduler_enabled
         else None
     )
@@ -133,9 +154,7 @@ def _montar_spa(app: FastAPI, dist_dir: Path) -> None:
 
     # Archivos sueltos servidos por Vite desde `public/` (favicon, íconos):
     # cualquiera que exista en la raíz de `dist/` además de `index.html`.
-    archivos_raiz = {
-        p.name for p in dist_dir.iterdir() if p.is_file() and p.name != "index.html"
-    }
+    archivos_raiz = {p.name for p in dist_dir.iterdir() if p.is_file() and p.name != "index.html"}
 
     @app.get("/{ruta_completa:path}", include_in_schema=False)
     async def _spa_fallback(request: Request, ruta_completa: str):

@@ -145,8 +145,10 @@ def _cmd_openapi(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="homelab-openapi-") as tmp:
         entorno = dict(os.environ)
         os.environ["DASHBOARD_DATA_DIR"] = str(Path(tmp) / "data")
+        os.environ["DASHBOARD_DB_FILE"] = str(Path(tmp) / "data" / "dashboard.db")
         os.environ["DASHBOARD_LOGS_DIR"] = str(Path(tmp) / "logs")
         os.environ["DASHBOARD_SCHEDULER_ENABLED"] = "false"
+        os.environ["DASHBOARD_REGIME_DELIVERIES_ENABLED"] = "false"
         app = None
         try:
             app = create_app()
@@ -214,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     openapi.set_defaults(func=_cmd_openapi)
 
+    from .market_regime.cli import configure_parser
+
+    configure_parser(
+        sub.add_parser("market-regime", help="regimen de mercado sin ejecutar ordenes")
+    )
     return parser
 
 

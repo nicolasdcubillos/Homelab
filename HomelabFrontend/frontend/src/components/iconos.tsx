@@ -25,6 +25,27 @@ export function IconoInicio({ className }: Props) {
   );
 }
 
+export function IconoRegimen({ className }: Props) {
+  return (
+    <svg {...BASE} className={className} aria-hidden="true">
+      <path d="M4 6h16M4 12h16M4 18h16" />
+      <circle cx="8" cy="6" r="2" fill="var(--c-surface)" />
+      <circle cx="16" cy="12" r="2" fill="var(--c-surface)" />
+      <circle cx="11" cy="18" r="2" fill="var(--c-surface)" />
+    </svg>
+  );
+}
+
+export function IconoMenuMas({ className }: Props) {
+  return (
+    <svg {...BASE} className={className} aria-hidden="true">
+      <circle cx="5" cy="12" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="19" cy="12" r="1.5" />
+    </svg>
+  );
+}
+
 export function IconoVigilancia({ className }: Props) {
   return (
     <svg {...BASE} className={className} aria-hidden="true">
